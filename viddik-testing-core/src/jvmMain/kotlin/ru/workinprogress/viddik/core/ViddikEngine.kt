@@ -9,6 +9,7 @@ private const val RECORD_MODE_ENV = "VIDDIK_RECORD_MODE"
 private const val SNAPSHOTS_DIR_PROPERTY = "viddik.snapshotsDir"
 private const val REPORTS_DIR_PROPERTY = "viddik.reportsDir"
 private const val TOLERANCE_PERCENT_PROPERTY = "viddik.tolerancePercent"
+private const val CHANNEL_TOLERANCE_PROPERTY = "viddik.channelTolerance"
 private const val DEFAULT_SNAPSHOTS_DIR = "src/desktopTest/snapshots"
 private const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
 
@@ -22,6 +23,8 @@ object ViddikEngine {
         reportsDir: File = File(System.getProperty(REPORTS_DIR_PROPERTY) ?: DEFAULT_REPORTS_DIR),
         tolerancePercent: Double =
             System.getProperty(TOLERANCE_PERCENT_PROPERTY)?.toDoubleOrNull() ?: DEFAULT_TOLERANCE_PERCENT,
+        channelTolerance: Int =
+            System.getProperty(CHANNEL_TOLERANCE_PROPERTY)?.toIntOrNull() ?: DEFAULT_CHANNEL_TOLERANCE,
     ) {
         val fileName = fileNameFor(component)
         val goldenFile = File(snapshotsDir, fileName)
@@ -41,7 +44,7 @@ object ViddikEngine {
         }
 
         val expected = ImageIO.read(goldenFile)
-        val diff = ImageDiffer.diff(expected, actual)
+        val diff = ImageDiffer.diff(expected, actual, channelTolerance)
         if (!diff.matches(tolerancePercent)) {
             reportsDir.mkdirs()
             val diffFile = File(reportsDir, fileName.removeSuffix(".png") + "_DIFF.png")
