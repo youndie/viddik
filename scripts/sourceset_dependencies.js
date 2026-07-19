@@ -1,0 +1,1 @@
+sourceset_dependencies = '{":viddik-annotations/androidMain":[":viddik-annotations/commonMain"],":viddik-annotations/commonMain":[],":viddik-annotations/desktopMain":[":viddik-annotations/commonMain"],":viddik-testing-core/commonMain":[],":viddik-testing-core/jvmMain":[":viddik-testing-core/commonMain"],":viddik-processor/main":[]}'

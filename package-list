@@ -1,0 +1,10 @@
+$dokka.format:html-v1
+$dokka.linkExtension:html
+
+module:viddik-annotations
+ru.workinprogress.viddik
+ru.workinprogress.viddik.annotations
+module:viddik-processor
+ru.workinprogress.viddik.processor
+module:viddik-testing-core
+ru.workinprogress.viddik.core
