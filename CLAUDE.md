@@ -120,6 +120,9 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     dialog directly or indirectly should always pass an explicit `height`.
   - `ImageDiffer` — pixel-for-pixel diff, paints every mismatched (or out-of-bounds) pixel solid red in
     the output `DiffResult.diffImage` so the artifact is a readable visual diff, not just a boolean.
+    `DiffResult.matches(tolerancePercent: Double = DEFAULT_TOLERANCE_PERCENT)` — NOT a `val`, a
+    function; `mismatchedPixels == 0` used to be the bar but that's unreachable cross-platform (see
+    the font/rasterization bullet below), so `DEFAULT_TOLERANCE_PERCENT = 0.5` is the real default.
   - `ViddikEngine` — the record/verify harness (Paparazzi-equivalent). `VIDDIK_RECORD_MODE` env var
     (not a Gradle property — set it in the shell/CI step) toggles write-golden vs compare-and-fail.
     `viddik.snapshotsDir`/`viddik.reportsDir` **system properties** (not env vars) override the
@@ -128,15 +131,90 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     `GeneratedViddikTests` calls `dynamicTests(...)` with no parameters, so there's no way to thread an
     override through generated code; every consumer's `build.gradle.kts` sets these explicitly via
     `systemProperty(...)` on its `Test` task — see `viddik-testing-core/build.gradle.kts` itself for
-    the pattern (`src/jvmTest/snapshots`, since this module's own target is unnamed `jvm()`).
+    the pattern (`src/jvmTest/snapshots`, since this module's own target is unnamed `jvm()`). Same
+    system-property override pattern for the diff tolerance: `viddik.tolerancePercent`.
+  - `ViddikFonts.kt` — everything here is `by lazy` top-level `val`s/plain functions in `jvmMain` (not
+    `jvmTest`), so any consumer can use them, not just the self-test:
+    - `ViddikFontFamily` — bundled Roboto, OFL, `src/jvmMain/resources/fonts/Roboto-Variable.ttf` (a
+      single variable font covers every weight; Skia resolves the requested weight from the "wght"
+      axis automatically via `FontVariation.Settings(weight, style)`, no static per-weight files
+      needed). **Gotcha that cost real debugging time**: the ByteArray-loading `Font(identity, data,
+      weight, style)` overload lives in `androidx.compose.ui.text.platform`, NOT
+      `androidx.compose.ui.text.font` (where the Android `Font(resId: Int, ...)` overload lives) —
+      importing the wrong package resolves to the resId overload silently and fails with a confusing
+      "String but Int expected" compile error, not an unresolved-reference error.
+    - `ViddikPlatformTextStyle` — forces `FontRasterizationSettings(smoothing = None, hinting = None,
+      subpixelPositioning = false)`. This exact combination was reached by elimination, not
+      guessed — see "Cross-platform golden portability" below for the numbers; `AntiAlias` +
+      `Slight` hinting (i.e. forcing *Linux's own PlatformDefault* on both OSes) was tried and
+      measured *worse* than `None`/`None`, so don't reintroduce it without re-measuring.
+    - `ViddikConsistentRendering.isEnabled` — reads the `viddik.consistentRendering` system property,
+      `false` unless a consumer's `Test` task sets it. This is the on/off switch for the whole
+      font+rasterization fix; see below for why it defaults off.
+    - `viddikTypography(base: Typography = Typography())` — rebuilds all 15 Material3 text styles
+      from `base` with `ViddikFontFamily` + `ViddikPlatformTextStyle` applied. Lowercase name
+      deliberately (ktlint's `function-naming` rule flags PascalCase for anything not annotated
+      `@Composable`, and this isn't one — the `.editorconfig` exception only covers `@Composable`).
+    - There is no way to force any of this onto a fixture from outside — `CaptureEngine` renders
+      whatever `content()` the fixture passes in, and if that fixture calls its own
+      `MaterialTheme(typography = ...)`, that always wins over anything provided further out. Every
+      consumer decides for itself whether to call `viddikTypography()`, typically gated on
+      `ViddikConsistentRendering.isEnabled`.
   - `DemoViddik.kt` (jvmTest) — the project's own self-test AND a living usage example: static fixture,
     dark-variant fixture, a `ViddikShowroom` self-screenshot, and a `@PreviewParameter` fixture using a
     bare `String` (which can't implement `ViddikPreviewLabel`, demonstrating the `toString()` fallback
-    naming path). The `Showroom - Showroom - list` golden was re-recorded on this machine after the
-    extraction carried over a stale one from the original banqfunkie copy (font-rendering mismatch,
-    7890/120000 px) — if this starts failing again on a different machine/CI runner, it's almost
-    certainly the same font-rendering sensitivity, not a real regression; re-record with
-    `VIDDIK_RECORD_MODE=true` and visually check the PNG before trusting it.
+    naming path). `demoTypography` picks `viddikTypography()` when `ViddikConsistentRendering.isEnabled`,
+    else a plain `Typography()` — this module's own `build.gradle.kts` sets
+    `systemProperty("viddik.consistentRendering", "true")` on the `Test` task specifically so this
+    repo's own CI passes reliably across macOS dev / Linux CI; a consumer copying this pattern makes
+    that call for itself instead of inheriting it from here. Even with the flag on, macOS vs Linux
+    still isn't byte-identical (different underlying glyph rasterizer, CoreText vs FreeType) —
+    measured 0.08%–0.27% mismatch empirically (macOS-recorded goldens verified against a Docker/Linux
+    run), comfortably under the 0.5% default tolerance. If this ever fails outside that range, it's a
+    real regression, not rendering noise; re-record with `VIDDIK_RECORD_MODE=true` and visually check
+    the PNG (and the `_DIFF.png` in `build/reports/screenshots/`) before trusting either outcome.
+
+## Cross-platform golden portability
+
+This was a real, fully-worked-through problem (not a hypothetical) — see git history on
+`feature/fonts` for the investigation. Two independent, mutually-exclusive fixes exist; don't combine
+them, and don't assume the second one is "free":
+
+**Fix 1 — record on CI.** Don't change rendering at all; always record goldens on the exact runner
+image that later verifies them (`.github/workflows/record-viddik-snapshots.yaml`, `workflow_dispatch`,
+runs the self-test in `VIDDIK_RECORD_MODE=true` on `ubuntu-latest` and uploads `snapshots/*.png` as a
+build artifact — download it and commit those files instead of ones recorded on a dev machine). Zero
+rendering-quality cost, but a golden recorded anywhere else is categorically invalid.
+
+**Fix 2 — `ViddikConsistentRendering` (`ViddikFonts.kt`).** Opt-in (`viddik.consistentRendering`
+system property, off by default) — bundles a font and forces rasterization settings so a dev-machine
+golden is *also* valid in CI, at the cost of visibly worse-looking (aliased) text everywhere,
+including the live `ViddikShowroom` browser. Order of sub-fixes, each closing a different fraction of
+the gap (measured, not guessed):
+
+1. **No bundled font**: ~100% pixel mismatch on nearly every fixture (host OS font substitution is
+   total, not subtle) — Skia has no fallback to a bundled font unless you explicitly load one.
+2. **+ bundled font, default rasterization**: 0.68%–2.26% mismatch — font identity fixed, but
+   `FontRasterizationSettings.PlatformDefault` still differs by OS.
+3. **+ forced `AntiAlias` smoothing / `Slight` hinting** (i.e. explicitly requesting *Linux's own*
+   `PlatformDefault` values on both OSes): 0.66%–2.24% — **no improvement over step 2**. Naming the
+   same setting on both platforms doesn't make FreeType (Linux) and CoreText (macOS) produce the same
+   hinting adjustment; each still runs its own platform-specific algorithm for "Slight".
+4. **+ forced `None` smoothing / `None` hinting** (what `ViddikPlatformTextStyle` actually uses):
+   0.08%–0.27% — the remaining gap is the OS's underlying glyph rasterizer library itself, not
+   anything exposed through Compose's public API. This is the best combination found; don't
+   re-attempt step 3's approach without re-measuring — it was tried on this exact codebase and
+   regressed.
+
+`ImageDiffer.DEFAULT_TOLERANCE_PERCENT = 0.5` absorbs step 4's residual regardless of which Fix is in
+use — a real UI regression moves far more than a fraction of a percent of pixels.
+
+A minimal Docker image (e.g. `eclipse-temurin:21-jdk`) is NOT representative of `ubuntu-latest` for
+this kind of testing — it's missing `libgl1`/`libx11-6`/`libegl1` (Skiko's native lib fails to load at
+all without them: `UnsatisfiedLinkError` at `LibraryLoader.kt`) and ships only DejaVu fonts, vs
+whatever `ubuntu-latest` actually has preinstalled — useful for reproducing/debugging the font problem
+locally (which is how every number above was measured), but its own goldens would NOT be valid
+stand-ins for what `ubuntu-latest` produces.
 
 ## Publishing (`buildSrc/viddik.publishing.gradle.kts`)
 
@@ -171,10 +249,14 @@ without it, ktlint flags every PascalCase `@Composable` function name as a style
 
 ## Consumers
 
-Downstream consumers depend on `ru.workinprogress:viddik-*` through `mavenLocal()` (added to their own
-`dependencyResolutionManagement` repositories) — there's no CI wiring to auto-publish `viddik` before
-building any consumer, so a fresh clone of a consumer repo needs `viddik`'s `publishToMavenLocal` run
-manually first. Exact coordinates depend on whether the consumer module is itself KMP-aware:
+Downstream consumers depend on `ru.workinprogress:viddik-*` either through `mavenLocal()` (a fresh
+clone needs `viddik`'s `publishToMavenLocal` run manually first — there's no CI wiring to
+auto-publish `viddik` before building a consumer) or, once a version has actually been pushed to
+`wip` via the publish workflow, the public `https://reposilite.kotlin.website/snapshots` repository
+directly (no credentials needed to read) — check a given consumer's own `settings.gradle.kts` to see
+which it's currently wired for; both are legitimate depending on whether local iteration or a real
+published version is being tested against. Exact coordinates depend on whether the consumer module is
+itself KMP-aware:
 
 - **A KMP consumer module** (e.g. a `jvm("desktop")` target) depends on the base coordinates without a
   target suffix (`ru.workinprogress:viddik-annotations:0.0.1`, `ru.workinprogress:viddik-testing-core:0.0.1`)

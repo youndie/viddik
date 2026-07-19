@@ -2,13 +2,16 @@ package ru.workinprogress.viddik.core
 
 import java.awt.image.BufferedImage
 
+const val DEFAULT_TOLERANCE_PERCENT = 0.5
+
 data class DiffResult(
     val diffImage: BufferedImage,
     val mismatchedPixels: Int,
     val totalPixels: Int,
 ) {
-    val matches: Boolean get() = mismatchedPixels == 0
     val mismatchPercent: Double get() = if (totalPixels == 0) 0.0 else mismatchedPixels * 100.0 / totalPixels
+
+    fun matches(tolerancePercent: Double = DEFAULT_TOLERANCE_PERCENT): Boolean = mismatchPercent <= tolerancePercent
 }
 
 private const val RED_MASK = 0xFFFF0000.toInt()
