@@ -1,0 +1,38 @@
+name: Record viddik snapshots (CI environment)
+
+# Compose Desktop/Skia renders text using whatever fonts are installed on the host — there's no
+# bundled/embedded font, so goldens recorded on a dev machine (macOS) never match ubuntu-latest CI
+# runners (different default font stack entirely). Run this manually (Actions tab -> Run workflow)
+# whenever a snapshot needs re-recording, download the "viddik-testing-core-snapshots" artifact,
+# and replace viddik-testing-core/src/jvmTest/snapshots/*.png with its contents before pushing —
+# this guarantees a match with the "Publish viddik wip snapshots" workflow's verify step, since
+# both run on the same runner image.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  record:
+    runs-on: [ ubuntu-latest ]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Record snapshots
+        run: VIDDIK_RECORD_MODE=true ./gradlew :viddik-testing-core:jvmTest --no-daemon --rerun
+
+      - name: Upload snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: viddik-testing-core-snapshots
+          path: viddik-testing-core/src/jvmTest/snapshots/*.png
+          retention-days: 7
