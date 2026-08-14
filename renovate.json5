@@ -1,0 +1,40 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended"],
+  labels: ["dependencies"],
+  // One batch a week rather than a PR per release: every update here has to survive a three-OS
+  // golden check, so they are cheap to review together and noisy one at a time.
+  schedule: ["* 0-6 * * 1"],
+  prConcurrentLimit: 5,
+  packageRules: [
+    {
+      // KSP is versioned against the compiler it runs in — a Kotlin bump without the matching KSP
+      // fails at runtime with a version-mismatch error, not at configuration time.
+      groupName: "kotlin + ksp",
+      matchPackageNames: [
+        "org.jetbrains.kotlin{/,}**",
+        "com.google.devtools.ksp{/,}**",
+      ],
+    },
+    {
+      // Anything that can move a pixel. Compose renders the goldens, so these PRs need
+      // `VIDDIK_RECORD_MODE=true ./gradlew :viddik-testing-core:jvmTest` and a look at the diff
+      // before merging — the three-OS check will fail on them by design, and that failure is the
+      // signal, not a flake.
+      groupName: "compose multiplatform",
+      matchPackageNames: ["org.jetbrains.compose{/,}**"],
+      labels: ["dependencies", "goldens-may-change"],
+      addLabels: ["goldens-may-change"],
+    },
+    {
+      // The Material3 line for Compose Multiplatform ships as prereleases well past the stable
+      // compose-multiplatform version, so the usual "stable only" rule would pin it forever.
+      matchPackageNames: ["org.jetbrains.compose.material3{/,}**"],
+      ignoreUnstable: false,
+    },
+    {
+      matchManagers: ["gradle-wrapper"],
+      groupName: "gradle wrapper",
+    },
+  ],
+}

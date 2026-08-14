@@ -155,10 +155,12 @@ data class CheckboxPreviewState(
 
 ### 🖥️ Cross-platform goldens (fonts, CI, tolerance)
 
-**Goldens are portable.** Record on macOS, verify on Linux CI, or the other way round — measured
-Windows↔Linux on this repo's own suite, 8 of 10 goldens come out byte-identical (same md5) and the
-other two differ by 1–2 pixels within the channel tolerance. No Docker, no "record only on the
-runner", no per-OS baselines.
+**Goldens are portable.** Record on macOS, verify on Linux CI, or the other way round. On this
+repo's own suite 8 of 10 goldens come out byte-identical across Windows and Linux (same md5) and the
+other two differ by 1–2 pixels within the channel tolerance; every PR re-checks the committed PNGs on
+`ubuntu-latest`, `macos-latest` (arm64) and `windows-latest` at once
+(`.github/workflows/verify-goldens.yaml`). No Docker, no "record only on the runner", no per-OS
+baselines.
 
 That isn't free by default though, because Skia's text rendering is platform-specific in two
 independent ways. viddik fixes one of them for you and hands you the tool for the other.
