@@ -155,52 +155,65 @@ data class CheckboxPreviewState(
 
 ### 🖥️ Cross-platform goldens (fonts, CI, tolerance)
 
-Skia renders text through whatever fonts the host OS happens to have installed by default — a
-golden recorded on a macOS dev machine (system UI font) won't match a bare Linux CI runner (DejaVu,
-or nothing at all), and this affects *every* fixture that renders text, i.e. nearly all of them. Two
-legitimate ways to deal with this — pick one per project, they're not meant to be combined:
+**Goldens are portable.** Record on macOS, verify on Linux CI, or the other way round — measured
+Windows↔Linux on this repo's own suite, 8 of 10 goldens come out byte-identical (same md5) and the
+other two differ by 1–2 pixels within the channel tolerance. No Docker, no "record only on the
+runner", no per-OS baselines.
 
-**Option A — record on CI, change nothing else.** Don't touch fonts or rendering at all; just make
-sure goldens are always recorded on the exact same runner image that later verifies them. Full native
-text rendering quality (real anti-aliasing, real system fonts), but a golden recorded on a dev
-machine is never valid in CI and vice versa. Run your test task with `VIDDIK_RECORD_MODE=true` as a
-manually-triggered workflow (`workflow_dispatch`) on the same runner image your regular CI uses,
-upload the resulting `snapshots/*.png` as a build artifact, download it, and commit those files —
-not ones recorded locally. See this repo's own `.github/workflows/record-viddik-snapshots.yaml` for
-the pattern.
+That isn't free by default though, because Skia's text rendering is platform-specific in two
+independent ways. viddik fixes one of them for you and hands you the tool for the other.
 
-**Option B — turn on `ViddikConsistentRendering`, get portable-but-uglier goldens.** Set the
-`viddik.consistentRendering` system property (or a Gradle `systemProperty(...)` on your `Test` task,
-the way `viddik-testing-core`'s own build does for its self-test) and build your theme's `Typography`
-via `viddikTypography()` instead of the plain Material3 default:
+**Fixed automatically — glyph rasterization.** Everything Skia draws except glyphs goes through its
+own scan converter, identical in every skiko build; glyphs instead go to the host font backend
+(CoreText / DirectWrite / FreeType), and no combination of `FontRasterizationSettings` makes those
+three agree. `CaptureEngine` sidesteps the backend entirely: it hands the canvas a matrix carrying a
+1e-9 perspective term, which is Skia's own documented condition for abandoning the glyph mask cache
+and filling glyph outlines with its regular path rasterizer. Geometry shifts by ~1e-6 px, text keeps
+full anti-aliasing, and rendering stops depending on the OS. Nothing to configure.
+
+**Your job — fonts.** Skia renders text through whatever fonts the host OS has installed, so a golden
+recorded against the macOS system UI font can't match a bare Linux runner. Bundle a font file:
+
+- **No font of your own?** Use the bundled Roboto (OFL, variable, single file for every weight):
+
+  ```kotlin
+  MaterialTheme(typography = viddikTypography()) { content() }
+  ```
+
+- **Already bundling your design system's font?** Keep it, and run the bytes through
+  `normalizeVerticalMetrics()` when loading:
+
+  ```kotlin
+  val fontBytes = normalizeVerticalMetrics(resource("fonts/YourFont.ttf").readBytes())
+  ```
+
+  This one matters more than it sounds. Font backends read vertical metrics from *different tables of
+  the same file* — FreeType and CoreText take `hhea`, DirectWrite takes `OS/2.usWin*`. In Roboto those
+  disagree (1900/−500 vs 1946/512, i.e. ascent −12.988 vs −13.303 at 14px), so line height and
+  baseline differ per OS and every line after the first in a paragraph drifts by a pixel — the single
+  largest source of cross-platform diff we measured. `normalizeVerticalMetrics()` forces `hhea`,
+  `OS/2.sTypo*` and `OS/2.usWin*` to agree and sets `USE_TYPO_METRICS`, so which table a backend
+  prefers stops mattering. `ViddikFontFamily` already goes through it.
+
+**What still isn't portable:** glyphs your bundled font doesn't have. A `世界`, an emoji, or a `✕`
+used as a close button falls back to a *host* font — real CJK on a Mac, tofu boxes in a bare
+container, Segoe UI Symbol on Windows. This one can't be fixed from outside Compose (a fallback font
+registered with Skia is only consulted after the host's, and ParagraphBuilder pins one typeface per
+style, so per-character family fallback never runs — both measured, see CLAUDE.md), so viddik reports
+it instead:
 
 ```kotlin
-MaterialTheme(
-    typography = if (ViddikConsistentRendering.isEnabled) viddikTypography() else Typography(),
-) { content() }
+check(ViddikGlyphCoverage.missingGlyphs(label).isEmpty()) { "host fonts would draw these: $label" }
 ```
 
-This bundles a bit-identical Roboto (OFL, variable font) and forces `FontRasterizationSettings`
-(`smoothing = None, hinting = None, subpixelPositioning = false`) on every text style instead of the
-platform default, which differs by OS (`FontHinting.Normal` on macOS vs `FontHinting.Slight` on
-Linux) even with the same font file — this is *not* a guess, it was measured:
+`missingGlyphs(text, fontBytes = bundled Roboto)` reads the font's own `cmap`. Non-empty means that
+text renders differently per machine — draw the icon as an icon, or bundle a font that covers it.
 
-| Configuration | Mismatch (macOS golden vs Linux/Docker verify) |
-|---|---|
-| No bundled font at all | ~100% (wholesale font substitution) |
-| Bundled font, platform-default rasterization | 0.68%–2.26% |
-| Bundled font, forced `AntiAlias` + `Slight` hinting (i.e. *telling both platforms to use Linux's own default*) | 0.66%–2.24% — **no better**, since "Slight" hinting still runs a platform-specific outline-adjustment algorithm; naming the same setting on both platforms doesn't make FreeType and CoreText agree |
-| Bundled font, forced `None` smoothing + `None` hinting | **0.08%–0.27%** — best found |
-
-Even at its best this isn't byte-identical — Skia uses a different underlying glyph rasterizer per
-platform (CoreText vs FreeType), which isn't something Compose's public API lets you override.
-`ViddikEngine.verify(...)` therefore treats a match as "≤ 0.5% of pixels differ" by default
-(`ImageDiffer.DEFAULT_TOLERANCE_PERCENT`), not exact equality — a real UI regression moves far more
-than a fraction of a percent of pixels, so this doesn't meaningfully weaken the check. Override per
-call via `tolerancePercent`, or globally via the `viddik.tolerancePercent` system property.
-
-This trades visual fidelity for portability — forced no-AA/no-hinting text looks visibly worse
-(aliased/jagged), in both the recorded PNGs and the live `ViddikShowroom` browser. `ViddikConsistentRendering.isEnabled` defaults to `false` precisely so this degradation is opt-in, not automatic.
+`ViddikEngine.verify(...)` treats a match as "≤ 0.05% of pixels differ"
+(`ImageDiffer.DEFAULT_TOLERANCE_PERCENT`) with a ±2 per-channel allowance. For scale: adding one
+character to a button label moves 1.32% of the pixels, so this is a strict check, not a loose one.
+Override per call via `tolerancePercent`, or globally via the `viddik.tolerancePercent` system
+property.
 
 ### 🗂️ Groups & registry
 

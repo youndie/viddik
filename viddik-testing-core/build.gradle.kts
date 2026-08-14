@@ -64,8 +64,4 @@ tasks
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     systemProperty("viddik.snapshotsDir", "src/jvmTest/snapshots")
-    // This module's own self-test needs to pass on both a macOS dev machine and Linux CI, so it
-    // always opts into ViddikTypography() (see DemoViddik.kt) — a real consumer decides this for
-    // itself instead of inheriting it from here.
-    systemProperty("viddik.consistentRendering", "true")
 }

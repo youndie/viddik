@@ -10,6 +10,7 @@ private const val SNAPSHOTS_DIR_PROPERTY = "viddik.snapshotsDir"
 private const val REPORTS_DIR_PROPERTY = "viddik.reportsDir"
 private const val TOLERANCE_PERCENT_PROPERTY = "viddik.tolerancePercent"
 private const val CHANNEL_TOLERANCE_PROPERTY = "viddik.channelTolerance"
+private const val MIN_MISMATCHED_PIXELS_PROPERTY = "viddik.minMismatchedPixels"
 private const val DEFAULT_SNAPSHOTS_DIR = "src/desktopTest/snapshots"
 private const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
 
@@ -25,6 +26,8 @@ object ViddikEngine {
             System.getProperty(TOLERANCE_PERCENT_PROPERTY)?.toDoubleOrNull() ?: DEFAULT_TOLERANCE_PERCENT,
         channelTolerance: Int =
             System.getProperty(CHANNEL_TOLERANCE_PROPERTY)?.toIntOrNull() ?: DEFAULT_CHANNEL_TOLERANCE,
+        minMismatchedPixels: Int =
+            System.getProperty(MIN_MISMATCHED_PIXELS_PROPERTY)?.toIntOrNull() ?: DEFAULT_MIN_MISMATCHED_PIXELS,
     ) {
         val fileName = fileNameFor(component)
         val goldenFile = File(snapshotsDir, fileName)
@@ -45,14 +48,14 @@ object ViddikEngine {
 
         val expected = ImageIO.read(goldenFile)
         val diff = ImageDiffer.diff(expected, actual, channelTolerance)
-        if (!diff.matches(tolerancePercent)) {
+        if (!diff.matches(tolerancePercent, minMismatchedPixels)) {
             reportsDir.mkdirs()
             val diffFile = File(reportsDir, fileName.removeSuffix(".png") + "_DIFF.png")
             ImageIO.write(diff.diffImage, "png", diffFile)
             error(
                 "Screenshot mismatch for ${component.group}/${component.name}: " +
                     "${diff.mismatchedPixels}/${diff.totalPixels} px differ (${"%.2f".format(diff.mismatchPercent)}%, " +
-                    "tolerance $tolerancePercent%). Diff saved to ${diffFile.path}",
+                    "tolerance $tolerancePercent% or $minMismatchedPixels px). Diff saved to ${diffFile.path}",
             )
         }
     }

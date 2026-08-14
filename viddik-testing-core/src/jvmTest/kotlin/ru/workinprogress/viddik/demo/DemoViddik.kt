@@ -18,16 +18,12 @@ import ru.workinprogress.viddik.LocalViddikDarkTheme
 import ru.workinprogress.viddik.ViddikShowroom
 import ru.workinprogress.viddik.annotations.ViddikComponent
 import ru.workinprogress.viddik.annotations.ViddikScreenshot
-import ru.workinprogress.viddik.core.ViddikConsistentRendering
 import ru.workinprogress.viddik.core.viddikTypography
 
-// This module's own build.gradle.kts sets -Dviddik.consistentRendering=true on the jvmTest task, so
-// this always resolves to viddikTypography() here in practice — a real consumer that never sets the
-// property gets a plain, native-looking Typography() instead (see ViddikConsistentRendering's doc
-// for the tradeoff between the two).
-private val demoTypography: Typography by lazy {
-    if (ViddikConsistentRendering.isEnabled) viddikTypography() else Typography()
-}
+// The demo has no font of its own, so it takes the bundled one — that is the only reason these
+// goldens are reproducible on any OS. A project with its own bundled font keeps that font and runs it
+// through normalizeVerticalMetrics() instead.
+private val demoTypography: Typography by lazy { viddikTypography() }
 
 @Composable
 private fun DemoTheme(
