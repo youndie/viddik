@@ -32,9 +32,17 @@ VIDDIK_RECORD_MODE=true ./gradlew :viddik-testing-core:jvmTest --tests "*runAllS
                                                    # Re-record the self-test golden PNGs (src/jvmTest/snapshots/)
 ```
 
+CI: `.github/workflows/verify-goldens.yaml` runs `:viddik-testing-core:jvmTest` on every pull request
+across `ubuntu-latest` / `macos-latest` / `windows-latest` (`fail-fast: false`, uploads the
+`_DIFF.png` artifacts on failure), and `publish-viddik-snapshot.yaml` publishes on push to `main`.
+Dependencies are batched weekly by Renovate (`renovate.json5`) — Kotlin and KSP move together, and
+anything under `org.jetbrains.compose` is labelled `goldens-may-change` because it can move a pixel:
+those PRs need a re-record and a look at the diff, and the three-OS check failing on them is the
+signal working, not a flake.
+
 Downstream consumers resolve `ru.workinprogress:viddik-*` via `mavenLocal()` — after any change here,
 `publishToMavenLocal` before rebuilding them. Versions are bumped by hand in
-`gradle.properties` (`viddik.version`, currently `0.1.0`); Gradle/consumers cache by exact version+build
+`gradle.properties` (`viddik.version`, currently `0.1.1`); Gradle/consumers cache by exact version+build
 hash so a republish under the same version is picked up by build cache invalidation, not by version
 diffing — if a consumer's build looks stale after a republish, `--no-build-cache` or bump the version.
 
@@ -185,6 +193,9 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
 Solved — goldens record on one OS and verify on another. Getting here took a full measurement pass
 (Windows native vs Linux in Docker, 17 rendering variants × 8 fixtures); the numbers below are
 measured on this codebase, not guessed, and the dead ends are recorded so they don't get retried.
+macOS was the one backend that couldn't be measured locally, and `verify-goldens.yaml` closed that
+gap on the first PR: Windows-recorded goldens pass on `macos-latest` (CoreText, and arm64 — skiko
+ships a separate native library per architecture) as well as on Linux and Windows.
 
 Two independent causes, both now fixed at the source:
 
@@ -275,8 +286,8 @@ snapshot.yaml`) still supplies them as plain environment variables prefixed `ORG
 (`ORG_GRADLE_PROJECT_REPOSILITE_USER` etc.), which Gradle auto-maps to project properties, so
 `findProperty("REPOSILITE_USER")` sees them without any extra wiring. The `VERSION` property, when
 present, overrides the version of every registered `MavenPublication` at publish time only (base
-version + build number, e.g. `0.1.0.482` — computed by the workflow's "Determine version" step) —
-`publishToMavenLocal` never sees it and always publishes plain `0.1.0`, so local dev doesn't pollute
+version + build number, e.g. `0.1.1.482` — computed by the workflow's "Determine version" step) —
+`publishToMavenLocal` never sees it and always publishes plain `0.1.1`, so local dev doesn't pollute
 `~/.m2` with one version per rebuild. `./gradlew publish` / `publishAllPublicationsToWipRepository`
 (root-level invocation runs it in every subproject that has it) pushes to `wip`; `publishToMavenLocal`
 is unaffected by any of this and always available with no credentials.
@@ -304,11 +315,11 @@ published version is being tested against. Exact coordinates depend on whether t
 itself KMP-aware:
 
 - **A KMP consumer module** (e.g. a `jvm("desktop")` target) depends on the base coordinates without a
-  target suffix (`ru.workinprogress:viddik-annotations:0.1.0`, `ru.workinprogress:viddik-testing-core:0.1.0`)
+  target suffix (`ru.workinprogress:viddik-annotations:0.1.1`, `ru.workinprogress:viddik-testing-core:0.1.1`)
   since a KMP-aware consumer resolves the right variant through Gradle module metadata regardless of the
   producer's/consumer's local target *name* matching. KSP processor dependency example:
-  `add("kspDesktopTest", "ru.workinprogress:viddik-processor:0.1.0")`.
+  `add("kspDesktopTest", "ru.workinprogress:viddik-processor:0.1.1")`.
 - **A plain `kotlin("jvm")` consumer module**, NOT KMP-aware, needs the explicit platform-suffixed
-  artifacts instead: `ru.workinprogress:viddik-annotations-desktop:0.1.0` (the `jvm("desktop")` target
-  publication) and `ru.workinprogress:viddik-testing-core-jvm:0.1.0` (the unnamed `jvm()` target
-  publication) plus `kspTest("ru.workinprogress:viddik-processor:0.1.0")`.
+  artifacts instead: `ru.workinprogress:viddik-annotations-desktop:0.1.1` (the `jvm("desktop")` target
+  publication) and `ru.workinprogress:viddik-testing-core-jvm:0.1.1` (the unnamed `jvm()` target
+  publication) plus `kspTest("ru.workinprogress:viddik-processor:0.1.1")`.
