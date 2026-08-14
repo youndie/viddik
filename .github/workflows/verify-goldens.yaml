@@ -1,0 +1,48 @@
+name: Verify goldens
+
+# The point of this repo's rendering setup is that a golden recorded on one OS verifies on another, so
+# the check worth running is the committed PNGs against every platform at once. macOS matters most:
+# it is the only font backend (CoreText) that can't be reproduced on a Windows or Linux machine, and
+# macos-latest is also the only arm64 runner here — skiko ships a separate native library per
+# architecture, so that is a second axis this suite has never covered.
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: verify-goldens-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    strategy:
+      # a diff on one platform is the interesting result — don't cancel the others before they report
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      # gradlew (the shell script) is checked out with CRLF line endings on Windows, so run the .bat
+      # there rather than forcing bash on it.
+      - name: Verify goldens
+        run: ${{ runner.os == 'Windows' && '.\gradlew.bat' || './gradlew' }} :viddik-testing-core:jvmTest --no-daemon
+
+      - name: Upload diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-diffs-${{ matrix.os }}
+          path: viddik-testing-core/build/reports/screenshots/*.png
+          retention-days: 7
