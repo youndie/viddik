@@ -6,6 +6,7 @@
 [![viddik-processor](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-processor?name=processor&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-processor)
 [![viddik-testing-core](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-testing-core?name=testing-core&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-testing-core)
 [![API Docs](https://img.shields.io/badge/docs-Dokka-blue?logoColor=white)](https://youndie.github.io/viddik/)
+[![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 **screenshot-testing toolkit for Compose Multiplatform** — a showkase + paparazzi analog that renders
 through a real **Compose Desktop/Skiko** JVM window instead of Android/LayoutLib
