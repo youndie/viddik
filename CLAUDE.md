@@ -125,11 +125,13 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     `onNode(isDialog())` for both the capture and the measured height. Auto-height is NOT reliable for
     dialog content (measured height has been observed as either the full canvas or an under-measured
     placeholder depending on what `isDialog()` matches in a given dialog tree) — fixtures that open a
-    dialog directly or indirectly should always pass an explicit `height`. The capture root also
-    gets `Modifier.deterministicGlyphRasterization()` unconditionally — a 1e-9 perspective term on the
-    canvas matrix, which makes Skia rasterize glyph outlines with its own path rasterizer instead of
-    the host font backend. That is what makes goldens portable across OSes; the same caveat as above
-    applies to dialogs, whose separate root the modifier does not reach.
+    dialog directly or indirectly should always pass an explicit `height`. The image itself does not
+    come from `captureToImage()`: the engine renders the scene (`SkikoComposeUiTest.scene`, public)
+    into a `Surface` of its own whose canvas already carries the 1e-9 perspective term, which makes
+    Skia rasterize glyph outlines with its own path rasterizer instead of the host font backend. That
+    is what makes goldens portable across OSes, and doing it at the scene rather than at a node is
+    what extends it to `Dialog`/`Popup`, which Compose renders into roots of their own — a dialog is
+    then cropped out of the scene image by its semantics bounds.
   - `ImageDiffer` — pixel-for-pixel diff, paints every mismatched (or out-of-bounds) pixel solid red in
     the output `DiffResult.diffImage` so the artifact is a readable visual diff, not just a boolean.
     `DiffResult.matches(tolerancePercent: Double = DEFAULT_TOLERANCE_PERCENT)` — NOT a `val`, a
@@ -263,9 +265,16 @@ don't spend the day re-deriving them (`ViddikGlyphCoverage.kt`'s header keeps th
    more failures than doing nothing.
 
 What shipped instead is `ViddikGlyphCoverage.missingGlyphs(text, fontBytes)` — a cmap reader that
-names the offending codepoints up front (`ViddikGlyphCoverageTest` pins the behavior). Also still not
-portable: `Dialog` content, which renders into its own semantics root that the capture-root modifier
-doesn't reach.
+names the offending codepoints up front (`ViddikGlyphCoverageTest` pins the behavior).
+
+`Dialog` content used to be the other gap, for a mechanical reason: the perspective term sat on a
+modifier around the fixture, and Compose renders a dialog into a root of its own, which that modifier
+never reached. Measured on a downstream consumer's suite of 422 fixtures (recorded on Windows,
+verified on Linux): dialogs and bottom sheets were the only failures left, 36 of them, at 0.5–2.5%.
+Moving the term to the scene's canvas — the engine renders the scene itself instead of calling
+`captureToImage()` on a node — took that to 0. A consumer's own remaining diff, if any, is then either
+a fixture drawing a character its font lacks, or a component building `TextStyle(...)` from scratch
+(no `fontFamily`, so `FontFamily.Default` resolves to a host font).
 
 A minimal Docker image (e.g. `eclipse-temurin:21-jdk`) needs `libgl1`/`libx11-6`/`libxext6`/
 `libxrender1` installed or skiko's native lib won't load at all (`UnsatisfiedLinkError` at
