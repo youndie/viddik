@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalCoroutinesApi::class)
+@file:OptIn(ExperimentalCoroutinesApi::class, androidx.compose.ui.InternalComposeUiApi::class)
 
 package ru.workinprogress.viddik.core
 
@@ -9,14 +9,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ProvidedValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.graphics.asComposeCanvas
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.scene.ComposeScene
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SkikoComposeUiTest
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isRoot
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -25,8 +24,11 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.jetbrains.skia.Matrix44
+import org.jetbrains.skia.Surface
 import ru.workinprogress.viddik.annotations.AUTO_HEIGHT
 import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
+import javax.imageio.ImageIO
 
 @OptIn(ExperimentalTestApi::class)
 fun captureComposable(
@@ -50,7 +52,6 @@ fun captureComposable(
                         Modifier
                             .width(width.dp)
                             .let { if (autoHeight) it else it.height(height.dp) }
-                            .deterministicGlyphRasterization()
                             .onGloballyPositioned { measuredHeightPx = it.size.height },
                     ) {
                         content()
@@ -59,13 +60,30 @@ fun captureComposable(
             }
             waitForIdle()
 
+            // Render the scene ourselves, into a canvas carrying the perspective nudge, instead of
+            // captureToImage() on a node: a matrix on the scene's canvas reaches every layer of it,
+            // including Dialog/Popup, which Compose renders into their own roots — a modifier on the
+            // content node never reached those.
+            val scene = (this as SkikoComposeUiTest).scene
+            val rendered = renderSceneWithPerspective(scene, width, canvasHeight)
+
             val roots = onAllNodes(isRoot()).fetchSemanticsNodes()
             if (roots.size <= 1) {
-                captured = onRoot().captureToImage().toAwtImage()
+                captured = rendered
             } else {
-                val dialogNode = onNode(isDialog())
-                captured = dialogNode.captureToImage().toAwtImage()
-                measuredHeightPx = dialogNode.fetchSemanticsNode().size.height
+                // The dialog is drawn on top of the scene — crop it out by its semantics bounds.
+                val dialogNode = onNode(isDialog()).fetchSemanticsNode()
+                val bounds = dialogNode.boundsInWindow
+                val left = bounds.left.toInt().coerceIn(0, rendered.width - 1)
+                val top = bounds.top.toInt().coerceIn(0, rendered.height - 1)
+                captured =
+                    rendered.getSubimage(
+                        left,
+                        top,
+                        dialogNode.size.width.coerceIn(1, rendered.width - left),
+                        dialogNode.size.height.coerceIn(1, rendered.height - top),
+                    )
+                measuredHeightPx = dialogNode.size.height
             }
         }
     } finally {
@@ -79,7 +97,12 @@ fun captureComposable(
         "Content is taller than the auto-height ceiling ($MAX_AUTO_HEIGHT_CANVAS px) — pass an explicit " +
             "height to @ViddikScreenshot instead of relying on auto-height."
     }
-    return full.getSubimage(0, 0, width, measuredHeightPx.coerceAtLeast(1))
+    return full.getSubimage(
+        0,
+        0,
+        width.coerceAtMost(full.width),
+        measuredHeightPx.coerceIn(1, full.height),
+    )
 }
 
 // Everything Skia draws except glyphs goes through its own scan converter, which is identical in every
@@ -92,9 +115,11 @@ fun captureComposable(
 // while glyph rendering becomes platform-independent. Unconditional — unlike bundling a font, this costs
 // nothing and changes nothing a reviewer would notice (it is not the same as disabling anti-aliasing).
 //
-// Caveat: this reaches everything drawn under this node, including content inside compositing layers
-// (verified with alpha layers and elevated Cards) — but NOT a Dialog, which Compose renders into its own
-// root. Fixtures that capture a dialog still depend on the host font backend.
+// Applied to the scene's canvas rather than to a node, so it reaches every layer: content inside
+// compositing layers (verified with alpha layers and elevated Cards) and Dialog/Popup roots alike.
+// It has to be the scene: a modifier on the content node cannot reach a Dialog, which Compose renders
+// into a root of its own — measured on a downstream consumer's suite, where dialog and bottom-sheet
+// fixtures were the only cross-OS failures left (36 of 422) until this moved up to the scene.
 // laid out as the 4x4 grid it is, rather than one float per line
 @Suppress("ktlint:standard:argument-list-wrapping")
 private val PERSPECTIVE_NUDGE =
@@ -108,14 +133,19 @@ private val PERSPECTIVE_NUDGE =
         ),
     )
 
-private fun Modifier.deterministicGlyphRasterization(): Modifier =
-    drawWithContent {
-        val canvas = drawContext.canvas.nativeCanvas
-        canvas.save()
-        canvas.concat(PERSPECTIVE_NUDGE)
-        drawContent()
-        canvas.restore()
-    }
+// The scene is drawn into a canvas of our own with the perspective already applied: unlike a modifier
+// on a node, this covers every layer of the scene, Dialog and Popup roots included.
+private fun renderSceneWithPerspective(
+    scene: ComposeScene,
+    width: Int,
+    height: Int,
+): BufferedImage {
+    val surface = Surface.makeRasterN32Premul(width, height)
+    surface.canvas.concat(PERSPECTIVE_NUDGE)
+    scene.render(surface.canvas.asComposeCanvas(), 0L)
+    val encoded = checkNotNull(surface.makeImageSnapshot().encodeToData()) { "Screenshot encoding failed" }
+    return ImageIO.read(ByteArrayInputStream(encoded.bytes))
+}
 
 const val DEFAULT_WIDTH = 400
 
