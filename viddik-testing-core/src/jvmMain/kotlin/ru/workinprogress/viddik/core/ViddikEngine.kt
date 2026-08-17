@@ -6,6 +6,7 @@ import java.io.File
 import javax.imageio.ImageIO
 
 private const val RECORD_MODE_ENV = "VIDDIK_RECORD_MODE"
+private const val FILTER_PROPERTY = "viddik.filter"
 private const val SNAPSHOTS_DIR_PROPERTY = "viddik.snapshotsDir"
 private const val REPORTS_DIR_PROPERTY = "viddik.reportsDir"
 private const val TOLERANCE_PERCENT_PROPERTY = "viddik.tolerancePercent"
@@ -60,10 +61,56 @@ object ViddikEngine {
         }
     }
 
-    fun dynamicTests(components: List<ViddikComponent>): List<DynamicTest> =
-        components.map { component ->
-            DynamicTest.dynamicTest("${component.group} - ${component.name}") { verify(component) }
+    /**
+     * Every `@ViddikScreenshot` fixture in the module, as one dynamic test each — or the subset named
+     * by the `viddik.filter` system property.
+     *
+     * The filter exists because these are *dynamic* tests under a single generated class, which
+     * Gradle's `--tests` (classes and methods only) can't reach into. It is a case-insensitive
+     * substring match against `"$group - $name"`, with `*` and `?` as wildcards, so both `Primary`
+     * and `Buttons*Dark` select something sensible.
+     *
+     * A filter that matches nothing fails loudly rather than reporting an empty, green run — an
+     * accidentally over-narrow filter would otherwise look exactly like a passing verification.
+     */
+    fun dynamicTests(components: List<ViddikComponent>): List<DynamicTest> {
+        val pattern = System.getProperty(FILTER_PROPERTY)?.takeIf { it.isNotBlank() }
+        val selected =
+            if (pattern == null) {
+                components
+            } else {
+                val regex = globToRegex(pattern)
+                components.filter { regex.containsMatchIn(displayNameFor(it)) }
+            }
+
+        if (pattern != null && selected.isEmpty()) {
+            error(
+                "No @ViddikScreenshot component matches $FILTER_PROPERTY=\"$pattern\". " +
+                    "This module has: ${components.joinToString { "\"${displayNameFor(it)}\"" }}",
+            )
         }
+
+        return selected.map { component ->
+            DynamicTest.dynamicTest(displayNameFor(component)) { verify(component) }
+        }
+    }
+
+    private fun displayNameFor(component: ViddikComponent): String = "${component.group} - ${component.name}"
+
+    /**
+     * Unanchored on purpose: `containsMatchIn` gives substring semantics, so a filter doesn't have to
+     * spell out the group to reach a component.
+     */
+    internal fun globToRegex(pattern: String): Regex =
+        buildString {
+            pattern.forEach { character ->
+                when (character) {
+                    '*' -> append(".*")
+                    '?' -> append('.')
+                    else -> append(Regex.escape(character.toString()))
+                }
+            }
+        }.toRegex(RegexOption.IGNORE_CASE)
 
     private fun fileNameFor(component: ViddikComponent): String {
         val safe = "${component.group}_${component.name}".replace(Regex("[^A-Za-z0-9_.-]"), "_")

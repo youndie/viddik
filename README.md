@@ -5,6 +5,7 @@
 [![viddik-annotations](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-annotations?name=annotations&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-annotations)
 [![viddik-processor](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-processor?name=processor&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-processor)
 [![viddik-testing-core](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-testing-core?name=testing-core&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-testing-core)
+[![viddik-gradle-plugin](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-gradle-plugin?name=gradle-plugin&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-gradle-plugin)
 [![API Docs](https://img.shields.io/badge/docs-Dokka-blue?logoColor=white)](https://youndie.github.io/viddik/)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -19,21 +20,75 @@ verify) or shown live in a portable browser (`ViddikShowroom`), all on a plain J
 
 ### 📦 Installation
 
-Add the Reposilite snapshot repository and *viddik* dependencies:
+Add the Reposilite snapshot repository to `settings.gradle.kts`, and apply the plugin:
 
 ```kotlin
-plugins {
-    id("com.google.devtools.ksp") version "<KSP_VERSION>" // must match your Kotlin compiler version
-}
-
-repositories {
-    mavenCentral()
-    maven {
-        name = "wip"
-        url = uri("https://reposilite.kotlin.website/snapshots")
+// settings.gradle.kts
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven("https://reposilite.kotlin.website/snapshots")
     }
 }
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
+        maven("https://reposilite.kotlin.website/snapshots")
+    }
+}
+```
 
+```kotlin
+// build.gradle.kts of the module that holds the fixtures
+plugins {
+    id("com.google.devtools.ksp") version "<KSP_VERSION>" // must match your Kotlin compiler version
+    id("ru.workinprogress.viddik") version "<VERSION>"
+}
+```
+
+That's the whole setup. The plugin adds the dependencies, puts the processor on the right KSP
+configuration, registers the generated-source directory, and gives you two tasks:
+
+```bash
+./gradlew :yourModule:viddikRecord   # write the goldens
+./gradlew :yourModule:viddikVerify   # compare against them
+./gradlew :yourModule:viddikShowroom # open the component browser in a window
+```
+
+Which names those are is the part the plugin exists for: a `jvm("desktop")` target needs
+`kspDesktopTest` / `src/desktopTest/snapshots`, an unnamed `jvm()` needs `kspJvmTest` /
+`src/jvmTest/snapshots`, and a plain `kotlin("jvm")` module needs `kspTest` plus the
+platform-suffixed artifacts (`viddik-annotations-desktop`, `viddik-testing-core-jvm`) because it
+can't resolve a multiplatform variant. Get one of those wrong by hand and nothing errors — KSP just
+reports `SKIPPED` and the screenshot task passes with no tests in it.
+
+Everything is configurable, and every default is derived from the module:
+
+```kotlin
+viddik {
+    snapshotsDir = "src/desktopTest/snapshots" // default: src/<test source set>/snapshots
+    tolerancePercent = 0.5                     // default: viddik's own 0.05%
+    channelTolerance = 0                       // default: viddik's own ±2
+    reportsDir = "build/reports/screenshots"   // where a failed comparison writes its _DIFF.png
+    verifyOnCheck = true                       // default: false; -Pviddik.verify turns it on per-run
+    generateTests = false                      // registry only, no JUnit5 tests (Android app modules)
+    excludeFromTestTask = false                // default: true — see below
+    addDependencies = false                    // declare the viddik artifacts yourself instead
+    viddikVersion = "<VERSION>"                // default: the plugin's own version
+}
+```
+
+By default the goldens are **not** wired into `check`, and the generated tests are excluded from the
+module's ordinary test task. Goldens are portable once your fixtures bundle a font (see
+"Cross-platform goldens" below), but a project that hasn't done that yet has host-specific goldens,
+and those would redden `./gradlew build` on every machine that didn't record them. Turn the check on
+for good with `verifyOnCheck = true`, or per run with `./gradlew check -Pviddik.verify`.
+
+#### Declaring the dependencies by hand
+
+With `addDependencies = false` — or without the plugin at all:
+
+```kotlin
 dependencies {
     // KMP consumer (e.g. your own jvm("desktop") target) — base coordinates, no target suffix:
     testImplementation("ru.workinprogress:viddik-annotations:<VERSION>")
@@ -51,7 +106,8 @@ dependencies {
 `ViddikShowroom`) — safe to depend on from any Compose Multiplatform target, including `android()`.
 `viddik-processor` is the KSP codegen (registry + JUnit5 tests). `viddik-testing-core` is the JVM-only
 capture/diff/record engine (JUnit5 + Compose Desktop) — only ever needed on a `test`/`jvmTest`/
-`desktopTest` classpath, never `main`.
+`desktopTest` classpath, never `main`. Compose itself stays yours: the plugin adds no `material3` or
+`compose.desktop` dependency, since it can't know which of them your fixtures use.
 
 ### ✍️ Writing a fixture
 
@@ -71,17 +127,36 @@ This shows up two ways, from the exact same fixture — no duplication between "
 thing a developer clicks through":
 
 ```bash
-# Record goldens (writes src/desktopTest/snapshots/*.png by default — override via the
-# viddik.snapshotsDir system property if your module names its test source set differently,
-# e.g. src/jvmTest/snapshots/ or src/test/snapshots/. Verify visually — record mode doesn't validate.)
-VIDDIK_RECORD_MODE=true ./gradlew :yourModule:test --tests "*AppButton*"
+# Record every golden in the module (writes src/<test source set>/snapshots/*.png — verify them
+# visually, record mode doesn't validate anything)
+./gradlew :yourModule:viddikRecord
 
-# Verify (compares against the recorded golden, fails with a saved _DIFF.png on mismatch)
-./gradlew :yourModule:test --tests "*AppButton*"
+# Verify (compares against the recorded goldens, fails with a saved _DIFF.png on mismatch)
+./gradlew :yourModule:viddikVerify
+
+# Live in a window — same registry, no capture, just an interactive browser
+./gradlew :yourModule:viddikShowroom
 ```
 
+To work on one component, use `--component` — Gradle's own `--tests` can't help here, since every
+fixture is a JUnit5 **dynamic** test under a single `GeneratedViddikTests` class and `--tests` only
+matches classes and methods:
+
+```bash
+./gradlew :yourModule:viddikRecord --component "Buttons - Primary"  # rewrites one golden
+./gradlew :yourModule:viddikVerify --component Primary              # bare substring
+./gradlew :yourModule:viddikVerify --component "Buttons*Dark"       # * and ? are wildcards
+```
+
+The pattern is a **case-insensitive substring** of `"$group - $name"`, with `*` and `?` as wildcards.
+A pattern that matches nothing fails the task and lists what the module does have, rather than
+reporting a green run of zero screenshots.
+
+Without the plugin, recording is the `VIDDIK_RECORD_MODE` environment variable on whatever test task
+runs the generated class (`VIDDIK_RECORD_MODE=true ./gradlew :yourModule:test --rerun`), and the
+browser is a `fun main()` you write yourself:
+
 ```kotlin
-// Live in a window — same registry, no capture, just an interactive browser
 fun main() = application {
     Window(onCloseRequest = ::exitApplication, title = "Component Browser") {
         MaterialTheme {

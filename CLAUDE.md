@@ -16,17 +16,17 @@ history for the exact rename map if cross-referencing old code/docs that still s
 ## Build & Test Commands
 
 ```bash
-./gradlew build                                  # Build all 3 modules
+./gradlew build                                  # Build all 4 modules
 ./gradlew :viddik-testing-core:jvmTest            # Self-test suite (DemoViddik.kt) — NOT `test`, the
                                                    # module's jvm() target is unnamed so Gradle names the
                                                    # task jvmTest, not test (that only applies to plain
                                                    # kotlin("jvm") consumer modules like dev:uikit-sandbox)
-./gradlew ktlintCheck                             # Style check (all 3 modules; jvmTest sourceSet in
+./gradlew ktlintCheck                             # Style check (all 4 modules; jvmTest sourceSet in
                                                    # viddik-testing-core is deliberately excluded, see
                                                    # its build.gradle.kts — KSP-generated code lives there)
 ./gradlew ktlintFormat                            # Auto-fix style violations
 ./gradlew dokkaGenerate                           # Aggregated HTML docs at build/dokka/html/index.html
-./gradlew publishToMavenLocal                     # Publish all 3 modules for local consumers to pick up
+./gradlew publishToMavenLocal                     # Publish all 4 modules for local consumers to pick up
 ./gradlew :viddik-processor:publishToMavenLocal   # Single module, e.g. after a processor-only change
 VIDDIK_RECORD_MODE=true ./gradlew :viddik-testing-core:jvmTest --tests "*runAllScreenshots*"
                                                    # Re-record the self-test golden PNGs (src/jvmTest/snapshots/)
@@ -51,6 +51,7 @@ diffing — if a consumer's build looks stale after a republish, `--no-build-cac
 Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testing-core` (depends on
 `viddik-annotations`, KSP-processed by `viddik-processor` in its own `jvmTest`) / any consumer module
 (depends on both `viddik-annotations` + `viddik-testing-core`, KSP-processed by `viddik-processor`).
+`viddik-gradle-plugin` depends on none of them at compile time — it only knows their coordinates.
 
 - **viddik-annotations** — Kotlin Multiplatform (`android()` + `jvm("desktop")`), Compose Multiplatform
   UI only (LazyColumn/Text/clickable — no platform APIs), so adding targets here is unconstrained.
@@ -149,6 +150,17 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     `systemProperty(...)` on its `Test` task — see `viddik-testing-core/build.gradle.kts` itself for
     the pattern (`src/jvmTest/snapshots`, since this module's own target is unnamed `jvm()`). Same
     system-property override pattern for the diff tolerance: `viddik.tolerancePercent`.
+    - `viddik.filter` selects a subset of fixtures, which is the only way to reach one component:
+      `dynamicTests` is the sole entry point generated code calls, and Gradle's `--tests` can't see
+      dynamic tests. Case-insensitive **substring** of `"$group - $name"` with `*`/`?` as wildcards
+      (unanchored via `containsMatchIn`, so a bare `Primary` works without naming the group; regex
+      metacharacters in the pattern are escaped and match literally). A filter matching nothing
+      **throws**, listing the components that do exist — an over-narrow filter would otherwise be
+      indistinguishable from a passing run. Because the filter lives in `dynamicTests` rather than in
+      the processor, it reaches consumers that were built against an older `viddik-processor`; the
+      surface `viddik-gradle-plugin` puts on it is `--component`. Covered by `ViddikFilterTest`
+      (jvmTest), which counts the returned `DynamicTest`s without ever executing them — a
+      `DynamicTest` doesn't capture anything until it runs.
   - `ViddikFonts.kt` — everything here is `by lazy` top-level `val`s/plain functions in `jvmMain` (not
     `jvmTest`), so any consumer can use them, not just the self-test:
     - `ViddikFontFamily` — bundled Roboto, OFL, `src/jvmMain/resources/fonts/Roboto-Variable.ttf` (a
@@ -189,6 +201,64 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     recorded on Windows and verify green on Linux (and vice versa), so a failure here is a real
     regression, not rendering noise; re-record with `VIDDIK_RECORD_MODE=true` and visually check the
     PNG (and the `_DIFF.png` in `build/reports/screenshots/`) before trusting either outcome.
+
+- **viddik-gradle-plugin** — plain `kotlin("jvm")` + `java-gradle-plugin`, plugin id
+  `ru.workinprogress.viddik`. Exists because the wiring it replaces was copied by hand into four
+  consumers (appframe, skedl's `app:shared`, mani's `composeApp`, banqfunkie's
+  `bdui-ds-material-compose`), each spelling the same names slightly differently.
+  - `ViddikLayout` — the naming fork, and the only part with unit tests: `jvm("desktop")` →
+    `kspDesktopTest`/`desktopTest`/`src/desktopTest/snapshots`, unnamed `jvm()` → `kspJvmTest`/
+    `jvmTest`, plain `kotlin("jvm")` → `kspTest`/`test` plus the platform-suffixed artifacts
+    (`viddik-annotations-desktop`, `viddik-testing-core-jvm`) a non-KMP-aware consumer needs.
+  - **Dependencies and generated-source dirs are wired eagerly, NOT in `afterEvaluate`** — this is
+    the one non-obvious thing in the plugin. KSP decides whether its task has anything to do by
+    checking whether its configuration is empty, and it does that from *its own* `afterEvaluate`,
+    which runs first whenever KSP is applied before this plugin. A processor added in our
+    `afterEvaluate` is never seen, and the symptom isn't an error: `kspTestKotlinDesktop SKIPPED`,
+    then `viddikRecord` failing with "No tests found for given includes". The wiring therefore
+    happens from `targets.withType(KotlinJvmTarget).all { }` (KMP) / `plugins.withId` (JVM), with
+    `dependencies.addAllLater(...)` on a `configurations.matching { }` so the extension's values are
+    still read late and the plugins can be applied in either order. Same reason `viddik.generateTests`
+    goes in as a `CommandLineArgumentProvider` rather than `ksp { arg(k, v) }`.
+  - Task classpaths are wired in `afterEvaluate` (harmless there), but the three tasks are
+    *registered* in `apply()` so a consumer can still write `tasks.named<Test>("viddikVerify") { }`
+    in its own script body.
+  - Task names are `viddikVerify`/`viddikRecord`/`viddikShowroom`, not the `screenshotTest` the
+    hand-wired consumers use — namespaced, and `screenshotTest` also collides with AGP's own
+    screenshot-test source set concept in a KMP+Android module. Adopting the plugin in a consumer
+    means updating its README/CI to the new names.
+  - `viddikRecord` sets `VIDDIK_RECORD_MODE=true` and `outputs.upToDateWhen { false }`, which is the
+    `--rerun` that used to be part of the incantation.
+  - `ViddikScreenshotTask` (a `Test` subclass) exists only to carry `--component`, which sets the
+    engine's `viddik.filter`. Gradle's own `--tests` can't select a fixture: they're JUnit5 *dynamic*
+    tests under one `GeneratedViddikTests` class and `--tests` matches classes and methods only
+    (measured — `--tests "*Primary*"` fails with "No tests found", `--tests "*GeneratedViddikTests*"`
+    runs all of them). The value travels as a `CommandLineArgumentProvider` on
+    `jvmArgumentProviders`, not `systemProperty(...)`: a command-line option isn't known until after
+    configuration. It's `@Internal` on the task and `@Input` on the provider, which is what makes
+    changing `--component` re-run an otherwise up-to-date verification. The type is
+    `@DisableCachingByDefault` because the same type serves recording, whose real output — goldens in
+    the source tree — is undeclared.
+  - Both tasks set `testLogging { events(FAILED); exceptionFormat = FULL; showStackTraces = false }`.
+    Gradle's default prints `IllegalStateException at GeneratedViddikTests.kt:10` and nothing else,
+    so every failure — a pixel mismatch or a mistyped `--component` — meant opening the HTML report
+    to read a message that was already a full sentence.
+  - Versions travel as a **resource** (`generateViddikVersionResource` → `viddik-plugin.properties`),
+    not generated Kotlin: nothing for ktlint or Dokka to trip over. The viddik version the plugin
+    hands consumers defaults to the plugin's own, so processor and engine can't drift apart.
+  - The CI `VERSION` override is applied to `project.version` directly in this module's
+    `build.gradle.kts`, not left to `viddik.publishing`'s `afterEvaluate` — `java-gradle-plugin`
+    captures `project.version` when it creates the plugin-marker publication, so patching the
+    publications afterwards would leave the marker pointing at a version that was never published.
+  - KGP and KSP are `compileOnly`: the consumer's own versions must win, KSP's especially, since it
+    is pinned to their exact Kotlin compiler version. The plugin doesn't apply KSP, it checks for it
+    and fails with the configuration name it would have used.
+  - Current KGP rejects a second JVM target in one module outright ("`jvm()` Kotlin Target Already
+    Declared"), so `viddik { jvmTarget = ... }` and the "more than one JVM target" error are guards,
+    not live paths.
+  - `ViddikShowroomLauncher` (in `viddik-testing-core`, jvmMain) is the `viddikShowroom` task's main
+    class — it loads `GeneratedViddikRegistry` **reflectively** because that class is generated into
+    the *consumer's* test source set and isn't visible here at compile time.
 
 ## Cross-platform golden portability
 
@@ -283,7 +353,7 @@ the numbers above were measured; it is no longer needed to produce or verify gol
 
 ## Publishing (`buildSrc/viddik.publishing.gradle.kts`)
 
-A precompiled script plugin (`id("viddik.publishing")`, applied by all 3 modules) generalizes the
+A precompiled script plugin (`id("viddik.publishing")`, applied by all 4 modules) generalizes the
 publishing setup instead of each module hand-rolling its own `publishing {}` block: applies
 `maven-publish`, sets `version` from the `viddik.version` Gradle property (`gradle.properties`, single
 source of truth — modules no longer hardcode their own `version = "..."`), adds `withSourcesJar()` for
@@ -320,8 +390,15 @@ auto-publish `viddik` before building a consumer) or, once a version has actuall
 `wip` via the publish workflow, the public `https://reposilite.kotlin.website/snapshots` repository
 directly (no credentials needed to read) — check a given consumer's own `settings.gradle.kts` to see
 which it's currently wired for; both are legitimate depending on whether local iteration or a real
-published version is being tested against. Exact coordinates depend on whether the consumer module is
-itself KMP-aware:
+published version is being tested against.
+
+Since `viddik-gradle-plugin` exists, a consumer normally applies `id("ru.workinprogress.viddik")` and
+declares none of this by hand. The four consumers that predate the plugin (appframe, skedl's
+`app:shared`, mani's `composeApp`, banqfunkie's `bdui-ds-material-compose`) still carry the hand-rolled
+version; migrating one means deleting its `screenshotTest` task, its `viddik-*` dependencies and its
+`kotlin.srcDir("build/generated/ksp/...")` line, then renaming `screenshotTest` → `viddikVerify` in
+its README and CI. The coordinates below are what the plugin picks for itself, and what you still
+need with `viddik { addDependencies = false }`:
 
 - **A KMP consumer module** (e.g. a `jvm("desktop")` target) depends on the base coordinates without a
   target suffix (`ru.workinprogress:viddik-annotations:0.1.1`, `ru.workinprogress:viddik-testing-core:0.1.1`)

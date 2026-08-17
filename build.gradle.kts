@@ -12,4 +12,5 @@ dependencies {
     dokka(projects.viddikAnnotations)
     dokka(projects.viddikProcessor)
     dokka(projects.viddikTestingCore)
+    dokka(projects.viddikGradlePlugin)
 }
