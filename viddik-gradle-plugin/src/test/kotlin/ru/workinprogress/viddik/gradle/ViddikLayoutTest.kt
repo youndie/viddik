@@ -8,12 +8,13 @@ import kotlin.test.assertEquals
  * consumers, and each one fails quietly when it's wrong (a `kspTest` dependency on a KMP module
  * generates nothing, and the screenshot task then passes with no tests in it).
  *
- * The expected values are taken from the modules that had this wiring by hand: appframe
- * (`jvm("desktop")`), skedl's `app:shared` and viddik's own `viddik-testing-core` (unnamed `jvm()`).
+ * The expected values are the ones real consumer modules spelled out by hand before the plugin
+ * existed — a `jvm("desktop")` target, an unnamed `jvm()` (as in viddik's own `viddik-testing-core`)
+ * and a plain `kotlin("jvm")` module.
  */
 class ViddikLayoutTest {
     @Test
-    fun `named jvm target maps to the desktopTest names appframe used by hand`() {
+    fun `named jvm target maps to the desktopTest names`() {
         val layout = ViddikLayout.forMultiplatform(targetName = "desktop", testSourceSetName = "desktopTest")
 
         assertEquals("kspDesktopTest", layout.kspConfigurationName)
@@ -26,7 +27,7 @@ class ViddikLayoutTest {
     }
 
     @Test
-    fun `unnamed jvm target maps to the jvmTest names skedl used by hand`() {
+    fun `unnamed jvm target maps to the jvmTest names`() {
         val layout = ViddikLayout.forMultiplatform(targetName = "jvm", testSourceSetName = "jvmTest")
 
         assertEquals("kspJvmTest", layout.kspConfigurationName)

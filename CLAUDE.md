@@ -203,9 +203,8 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     PNG (and the `_DIFF.png` in `build/reports/screenshots/`) before trusting either outcome.
 
 - **viddik-gradle-plugin** — plain `kotlin("jvm")` + `java-gradle-plugin`, plugin id
-  `ru.workinprogress.viddik`. Exists because the wiring it replaces was copied by hand into four
-  consumers (appframe, skedl's `app:shared`, mani's `composeApp`, banqfunkie's
-  `bdui-ds-material-compose`), each spelling the same names slightly differently.
+  `ru.workinprogress.viddik`. Exists because the wiring it replaces was copied by hand into every
+  consumer that predates it, each spelling the same names slightly differently.
   - `ViddikLayout` — the naming fork, and the only part with unit tests: `jvm("desktop")` →
     `kspDesktopTest`/`desktopTest`/`src/desktopTest/snapshots`, unnamed `jvm()` → `kspJvmTest`/
     `jvmTest`, plain `kotlin("jvm")` → `kspTest`/`test` plus the platform-suffixed artifacts
@@ -393,8 +392,7 @@ which it's currently wired for; both are legitimate depending on whether local i
 published version is being tested against.
 
 Since `viddik-gradle-plugin` exists, a consumer normally applies `id("ru.workinprogress.viddik")` and
-declares none of this by hand. The four consumers that predate the plugin (appframe, skedl's
-`app:shared`, mani's `composeApp`, banqfunkie's `bdui-ds-material-compose`) still carry the hand-rolled
+declares none of this by hand. Consumers that predate the plugin still carry the hand-rolled
 version; migrating one means deleting its `screenshotTest` task, its `viddik-*` dependencies and its
 `kotlin.srcDir("build/generated/ksp/...")` line, then renaming `screenshotTest` → `viddikVerify` in
 its README and CI. The coordinates below are what the plugin picks for itself, and what you still
