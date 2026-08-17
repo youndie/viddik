@@ -2,7 +2,7 @@
 <html class="no-js" lang="en">
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
-    <title>dynamicTests</title>
+    <title>excludeFromTestTask</title>
 <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg"><script>var pathToRoot = "../../../";</script>
     <script>document.documentElement.classList.replace("no-js", "js");</script>
     <script>const storage = localStorage.getItem("dokka-dark-mode")
@@ -42,7 +42,7 @@
         </div>
         <div class="navigation-controls">
         <ul class="filter-section filter-section_loading" id="filter-section" aria-label="Target filter">
-                <button class="platform-tag platform-selector jvm-like" data-active="" aria-pressed="true" data-filter=":viddik-testing-core/jvmMain">jvm</button>
+                <button class="platform-tag platform-selector jvm-like" data-active="" aria-pressed="true" data-filter=":viddik-gradle-plugin/main">jvm</button>
             <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
                 <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox" data-role="dropdown-toggle" aria-controls="platform-tags-listbox" aria-haspopup="listbox" aria-expanded="false" aria-label="Toggle source sets"></button>
                 <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox" aria-label="Target filter">
@@ -53,7 +53,7 @@
                     </div>
                         <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
                             <label class="checkbox">
-                                <input type="checkbox" class="checkbox--input" id=":viddik-testing-core/jvmMain" data-filter=":viddik-testing-core/jvmMain">
+                                <input type="checkbox" class="checkbox--input" id=":viddik-gradle-plugin/main" data-filter=":viddik-gradle-plugin/main">
                                 <span class="checkbox--icon"></span>
                                 jvm
                             </label>
@@ -89,12 +89,12 @@
         </nav>
         <div id="resizer" class="resizer" data-item-type="BAR"></div>
         <div id="main" data-item-type="SECTION" role="main">
-<div class="main-content" data-page-type="member" id="content" pageids="viddik-testing-core::ru.workinprogress.viddik.core/ViddikEngine/dynamicTests/#kotlin.collections.List[ru.workinprogress.viddik.annotations.ViddikComponent]/PointingToDeclaration//-298648151">
-  <div class="breadcrumbs"><a href="../../index.html">viddik-testing-core</a><span class="delimiter">/</span><a href="../index.html">ru.workinprogress.viddik.core</a><span class="delimiter">/</span><a href="index.html">ViddikEngine</a><span class="delimiter">/</span><span class="current">dynamicTests</span></div>
+<div class="main-content" data-page-type="member" id="content" pageids="viddik-gradle-plugin::ru.workinprogress.viddik.gradle/ViddikExtension/excludeFromTestTask/#/PointingToDeclaration//180313729">
+  <div class="breadcrumbs"><a href="../../index.html">viddik-gradle-plugin</a><span class="delimiter">/</span><a href="../index.html">ru.workinprogress.viddik.gradle</a><span class="delimiter">/</span><a href="index.html">ViddikExtension</a><span class="delimiter">/</span><span class="current">excludeFromTestTask</span></div>
   <div class="cover ">
-    <h1 class="cover"><span>dynamic</span><wbr><span><span>Tests</span></span></h1>
+    <h1 class="cover"><span>exclude</span><wbr><span>From</span><wbr><span>Test</span><wbr><span><span>Task</span></span></h1>
   </div>
-  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-testing-core/jvmMain"><div class="symbol monospace"><span class="token keyword">fun </span><a href="dynamic-tests.html"><span class="token function">dynamicTests</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">components<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="../../../viddik-annotations/ru.workinprogress.viddik.annotations/-viddik-component/index.html">ViddikComponent</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><span data-unresolved-link="org.junit.jupiter.api/DynamicTest///PointingToDeclaration/">DynamicTest</span><span class="token operator">&gt;</span></div><p class="paragraph">Every <code class="lang-kotlin">@ViddikScreenshot</code> fixture in the module, as one dynamic test each — or the subset named by the <code class="lang-kotlin">viddik.filter</code> system property.</p><p class="paragraph">The filter exists because these are <i>dynamic</i> tests under a single generated class, which Gradle's <code class="lang-kotlin">--tests</code> (classes and methods only) can't reach into. It is a case-insensitive substring match against <code class="lang-kotlin">"$group - $name"</code>, with <code class="lang-kotlin">*</code> and <code class="lang-kotlin">?</code> as wildcards, so both <code class="lang-kotlin">Primary</code> and <code class="lang-kotlin">Buttons*Dark</code> select something sensible.</p><p class="paragraph">A filter that matches nothing fails loudly rather than reporting an empty, green run — an accidentally over-narrow filter would otherwise look exactly like a passing verification.</p></div></div>
+  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-gradle-plugin/main"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">val </span><a href="exclude-from-test-task.html">excludeFromTestTask</a><span class="token operator">: </span><span data-unresolved-link="org.gradle.api.provider/Property///PointingToDeclaration/">Property</span><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">&gt;</span></div><p class="paragraph">Whether the module's ordinary test task excludes the generated screenshot tests. <code class="lang-kotlin">true</code> by default: they're owned by the verify task, and running them from both places just does the work twice against goldens the ordinary task has no reason to care about.</p></div></div>
 </div>
     <div class="footer">
         <div class="footer--container">

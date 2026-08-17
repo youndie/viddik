@@ -2,7 +2,7 @@
 <html class="no-js" lang="en">
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
-    <title>ViddikEngine</title>
+    <title>ViddikShowroomLauncher</title>
 <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg"><script>var pathToRoot = "../../../";</script>
     <script>document.documentElement.classList.replace("no-js", "js");</script>
     <script>const storage = localStorage.getItem("dokka-dark-mode")
@@ -89,43 +89,28 @@
         </nav>
         <div id="resizer" class="resizer" data-item-type="BAR"></div>
         <div id="main" data-item-type="SECTION" role="main">
-<div class="main-content" data-page-type="classlike" id="content" pageids="viddik-testing-core::ru.workinprogress.viddik.core/ViddikEngine///PointingToDeclaration//-298648151">
-  <div class="breadcrumbs"><a href="../../index.html">viddik-testing-core</a><span class="delimiter">/</span><a href="../index.html">ru.workinprogress.viddik.core</a><span class="delimiter">/</span><span class="current">ViddikEngine</span></div>
+<div class="main-content" data-page-type="classlike" id="content" pageids="viddik-testing-core::ru.workinprogress.viddik.core/ViddikShowroomLauncher///PointingToDeclaration//-298648151">
+  <div class="breadcrumbs"><a href="../../index.html">viddik-testing-core</a><span class="delimiter">/</span><a href="../index.html">ru.workinprogress.viddik.core</a><span class="delimiter">/</span><span class="current">ViddikShowroomLauncher</span></div>
   <div class="cover ">
-    <h1 class="cover"><span>Viddik</span><wbr><span><span>Engine</span></span></h1>
-    <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-testing-core/jvmMain"><div class="symbol monospace"><span class="token keyword">object </span><a href="index.html">ViddikEngine</a></div></div></div>
+    <h1 class="cover"><span>Viddik</span><wbr><span>Showroom</span><wbr><span><span>Launcher</span></span></h1>
+    <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-testing-core/jvmMain"><div class="symbol monospace"><span class="token keyword">object </span><a href="index.html">ViddikShowroomLauncher</a></div><p class="paragraph">Opens <a href="../../../viddik-annotations/ru.workinprogress.viddik/index.html">ViddikShowroom</a> over whatever registry the KSP processor generated in the module this runs against — the browser half of viddik, without every consumer hand-writing the same <code class="lang-kotlin">fun main()</code>.</p><p class="paragraph">The registry is loaded reflectively on purpose: it is generated into the <i>consumer's</i> test source set, so this module can't see the class at compile time, only on the runtime classpath the <code class="lang-kotlin">viddikShowroom</code> Gradle task assembles.</p></div></div>
   </div>
   <div class="tabbedcontent">
     <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="CONSTRUCTOR,TYPE,PROPERTY,FUNCTION">Members</button></div>
     <div class="tabs-section-body">
       <div data-togglable="FUNCTION">
         <h2 class="tableheader">Functions</h2>
-        <div class="table"><a data-name="1759334087%2FFunctions%2F-298648151" anchor-label="dynamicTests" id="1759334087%2FFunctions%2F-298648151" data-filterable-set=":viddik-testing-core/jvmMain"></a>
+        <div class="table"><a data-name="573800283%2FFunctions%2F-298648151" anchor-label="main" id="573800283%2FFunctions%2F-298648151" data-filterable-set=":viddik-testing-core/jvmMain"></a>
           <div class="table-row table-row_content" data-filterable-current=":viddik-testing-core/jvmMain" data-filterable-set=":viddik-testing-core/jvmMain">
             <div class="main-subrow keyValue ">
               <div class=""><span class="inline-flex">
-                  <div><a href="dynamic-tests.html"><span>dynamic</span><wbr><span><span>Tests</span></span></a></div>
-<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1759334087%2FFunctions%2F-298648151"></span>
+                  <div><a href="main.html"><span><span>main</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="573800283%2FFunctions%2F-298648151"></span>
                     <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
                   </span></span></div>
               <div>
                 <div class="title">
-                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-testing-core/jvmMain"><div class="symbol monospace"><span class="token keyword">fun </span><a href="dynamic-tests.html"><span class="token function">dynamicTests</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">components<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="../../../viddik-annotations/ru.workinprogress.viddik.annotations/-viddik-component/index.html">ViddikComponent</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><span data-unresolved-link="org.junit.jupiter.api/DynamicTest///PointingToDeclaration/">DynamicTest</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Every <code class="lang-kotlin">@ViddikScreenshot</code> fixture in the module, as one dynamic test each — or the subset named by the <code class="lang-kotlin">viddik.filter</code> system property.</p></div></div></div>
-                </div>
-              </div>
-            </div>
-          </div>
-<a data-name="-499962141%2FFunctions%2F-298648151" anchor-label="verify" id="-499962141%2FFunctions%2F-298648151" data-filterable-set=":viddik-testing-core/jvmMain"></a>
-          <div class="table-row table-row_content" data-filterable-current=":viddik-testing-core/jvmMain" data-filterable-set=":viddik-testing-core/jvmMain">
-            <div class="main-subrow keyValue ">
-              <div class=""><span class="inline-flex">
-                  <div><a href="verify.html"><span><span>verify</span></span></a></div>
-<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-499962141%2FFunctions%2F-298648151"></span>
-                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
-                  </span></span></div>
-              <div>
-                <div class="title">
-                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-testing-core/jvmMain"><div class="symbol monospace"><span class="token keyword">fun </span><a href="verify.html"><span class="token function">verify</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">component<span class="token operator">: </span><a href="../../../viddik-annotations/ru.workinprogress.viddik.annotations/-viddik-component/index.html">ViddikComponent</a><span class="token punctuation">, </span></span><span class="parameter ">snapshotsDir<span class="token operator">: </span><a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/io/File.html">File</a><span class="token operator"> = </span>File(System.getProperty(SNAPSHOTS_DIR_PROPERTY) ?: DEFAULT_SNAPSHOTS_DIR)<span class="token punctuation">, </span></span><span class="parameter ">reportsDir<span class="token operator">: </span><a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/io/File.html">File</a><span class="token operator"> = </span>File(System.getProperty(REPORTS_DIR_PROPERTY) ?: DEFAULT_REPORTS_DIR)<span class="token punctuation">, </span></span><span class="parameter ">tolerancePercent<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator"> = </span>System.getProperty(TOLERANCE_PERCENT_PROPERTY)?.toDoubleOrNull() ?: DEFAULT_TOLERANCE_PERCENT<span class="token punctuation">, </span></span><span class="parameter ">channelTolerance<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span>System.getProperty(CHANNEL_TOLERANCE_PROPERTY)?.toIntOrNull() ?: DEFAULT_CHANNEL_TOLERANCE<span class="token punctuation">, </span></span><span class="parameter ">minMismatchedPixels<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span>System.getProperty(MIN_MISMATCHED_PIXELS_PROPERTY)?.toIntOrNull() ?: DEFAULT_MIN_MISMATCHED_PIXELS</span></span><span class="token punctuation">)</span></div></div></div>
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-testing-core/jvmMain"><div class="symbol monospace"><div class="block"><div class="block"><span class="token annotation builtin">@</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.jvm/-jvm-static/index.html"><span class="token annotation builtin">JvmStatic</span></a></div></div><span class="token keyword">fun </span><a href="main.html"><span class="token function">main</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">args<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span></div></div></div>
                 </div>
               </div>
             </div>
