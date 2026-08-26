@@ -13,7 +13,7 @@ group = "ru.workinprogress"
 kotlin {
     android {
         namespace = "ru.workinprogress.viddik.annotations"
-        compileSdk = 36
+        compileSdk = 37
         minSdk = 24
     }
 
