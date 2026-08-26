@@ -1,7 +1,7 @@
 # viddik
 
 [![ktlint](https://img.shields.io/badge/ktlint%20code--style-%E2%9D%A4-FF4081.svg)](https://ktlint.github.io/)
-[![kotlin](https://img.shields.io/badge/Kotlin-2.4.0-blue?logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![kotlin](https://img.shields.io/badge/Kotlin-2.4.10-blue?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![viddik-annotations](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-annotations?name=annotations&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-annotations)
 [![viddik-processor](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-processor?name=processor&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-processor)
 [![viddik-testing-core](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-testing-core?name=testing-core&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-testing-core)
@@ -83,6 +83,20 @@ module's ordinary test task. Goldens are portable once your fixtures bundle a fo
 "Cross-platform goldens" below), but a project that hasn't done that yet has host-specific goldens,
 and those would redden `./gradlew build` on every machine that didn't record them. Turn the check on
 for good with `verifyOnCheck = true`, or per run with `./gradlew check -Pviddik.verify`.
+
+#### Compatibility
+
+`viddik-testing-core` renders through `ComposeScene` and `skiko` directly, so it is bound to one
+Compose Multiplatform line rather than to a range of them — a mismatch shows up at runtime
+(`NoSuchMethodError` / `IllegalAccessError` on the first frame), not at compile time.
+
+| viddik | Compose Multiplatform | Kotlin |
+|---|---|---|
+| 0.2.x | 1.12.x | 2.4.x |
+| 0.1.x | 1.11.x | 2.4.x |
+
+An Android consumer of `viddik-annotations` needs `compileSdk = 37` from 0.2.0 on — that is what
+Compose Multiplatform 1.12 requires of everything that depends on it.
 
 #### Declaring the dependencies by hand
 
