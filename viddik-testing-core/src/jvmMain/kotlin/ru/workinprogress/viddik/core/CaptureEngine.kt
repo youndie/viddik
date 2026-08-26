@@ -120,17 +120,19 @@ fun captureComposable(
 // It has to be the scene: a modifier on the content node cannot reach a Dialog, which Compose renders
 // into a root of its own — measured on a downstream consumer's suite, where dialog and bottom-sheet
 // fixtures were the only cross-OS failures left (36 of 422) until this moved up to the scene.
+//
+// Spelled as sixteen positional arguments rather than a spread `*floatArrayOf(...)`: skiko 0.150.1
+// turned Matrix44 into a value class, whose array constructor is no longer public — the sixteen-float
+// form is the one that compiles against both the old vararg constructor and the new one.
 // laid out as the 4x4 grid it is, rather than one float per line
 @Suppress("ktlint:standard:argument-list-wrapping")
 private val PERSPECTIVE_NUDGE =
     Matrix44(
-        *floatArrayOf(
-            // identity, except for persp1 in the bottom row
-            1f, 0f, 0f, 0f,
-            0f, 1f, 0f, 0f,
-            0f, 0f, 1f, 0f,
-            0f, 1e-9f, 0f, 1f,
-        ),
+        // identity, except for persp1 in the bottom row
+        1f, 0f, 0f, 0f,
+        0f, 1f, 0f, 0f,
+        0f, 0f, 1f, 0f,
+        0f, 1e-9f, 0f, 1f,
     )
 
 // The scene is drawn into a canvas of our own with the perspective already applied: unlike a modifier
@@ -142,7 +144,12 @@ private fun renderSceneWithPerspective(
 ): BufferedImage {
     val surface = Surface.makeRasterN32Premul(width, height)
     surface.canvas.concat(PERSPECTIVE_NUDGE)
-    scene.render(surface.canvas.asComposeCanvas(), 0L)
+    // Compose Multiplatform 1.12 dropped ComposeScene.render(canvas, nanoTime) in favour of the two
+    // halves it used to combine. The frame time it took is not missed here: the test harness has
+    // already been driven to idle by waitForIdle() before this runs, so there is no animation left to
+    // advance — all that is needed is a settled layout and one draw.
+    scene.measureAndLayout()
+    scene.draw(surface.canvas.asComposeCanvas())
     val encoded = checkNotNull(surface.makeImageSnapshot().encodeToData()) { "Screenshot encoding failed" }
     return ImageIO.read(ByteArrayInputStream(encoded.bytes))
 }

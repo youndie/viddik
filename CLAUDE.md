@@ -42,7 +42,7 @@ signal working, not a flake.
 
 Downstream consumers resolve `ru.workinprogress:viddik-*` via `mavenLocal()` — after any change here,
 `publishToMavenLocal` before rebuilding them. Versions are bumped by hand in
-`gradle.properties` (`viddik.version`, currently `0.1.1`); Gradle/consumers cache by exact version+build
+`gradle.properties` (`viddik.version`, currently `0.2.0`); Gradle/consumers cache by exact version+build
 hash so a republish under the same version is picked up by build cache invalidation, not by version
 diffing — if a consumer's build looks stale after a republish, `--no-build-cache` or bump the version.
 
@@ -350,6 +350,32 @@ A minimal Docker image (e.g. `eclipse-temurin:21-jdk`) needs `libgl1`/`libx11-6`
 `LibraryLoader.kt`) — Skiko links against libGL even for pure raster rendering. That container is how
 the numbers above were measured; it is no longer needed to produce or verify goldens.
 
+## Compose Multiplatform version coupling
+
+`CaptureEngine` reaches past the public test API into `ComposeScene` and `org.jetbrains.skia`, so this
+project is pinned to one CMP *line*, not to a range. Neither end of that coupling is declared anywhere
+a resolver can see it: a consumer on a different line gets a `NoSuchMethodError` /
+`IllegalAccessError` on the first captured frame, at runtime, with everything having compiled clean.
+That is why README carries a compatibility table and why a CMP line bump is a minor version here.
+
+The 1.11 → 1.12 port (viddik 0.2.0) was two independent breakages, both in `CaptureEngine.kt`:
+
+- **`ComposeScene.render(canvas, nanoTime)` is gone**, split into `measureAndLayout()` + `draw(canvas)`.
+  The frame time it used to take isn't missed: `waitForIdle()` has already settled the harness before
+  the capture runs, so there is no animation left to advance.
+- **`org.jetbrains.skia.Matrix44` became a value class** in skiko 0.150.1, and its array constructor
+  is no longer public — `Matrix44(*floatArrayOf(...))` stopped compiling. Spelling the sixteen floats
+  as positional arguments works against both the old vararg constructor and the new one.
+
+Do **not** pin skiko to reconcile a mismatch. It isn't declared here at all — it arrives transitively
+with `compose.ui` and its version is chosen by CMP. Holding it back gets past the `Matrix44` error and
+straight into the `ComposeScene` one, because the coupling is to the Compose API, not only to skiko.
+
+CMP 1.12 also raised the Android floor: `viddik-annotations` compiles against `compileSdk = 37`, and
+so must any Android consumer of it. Its own goldens were unaffected — the committed PNGs, recorded
+against 1.11, verify byte-identical against 1.12 (checked against a deliberately corrupted golden to
+confirm the comparison was live, not vacuous).
+
 ## Publishing (`buildSrc/viddik.publishing.gradle.kts`)
 
 A precompiled script plugin (`id("viddik.publishing")`, applied by all 4 modules) generalizes the
@@ -364,8 +390,8 @@ snapshot.yaml`) still supplies them as plain environment variables prefixed `ORG
 (`ORG_GRADLE_PROJECT_REPOSILITE_USER` etc.), which Gradle auto-maps to project properties, so
 `findProperty("REPOSILITE_USER")` sees them without any extra wiring. The `VERSION` property, when
 present, overrides the version of every registered `MavenPublication` at publish time only (base
-version + build number, e.g. `0.1.1.482` — computed by the workflow's "Determine version" step) —
-`publishToMavenLocal` never sees it and always publishes plain `0.1.1`, so local dev doesn't pollute
+version + build number, e.g. `0.2.0.482` — computed by the workflow's "Determine version" step) —
+`publishToMavenLocal` never sees it and always publishes plain `0.2.0`, so local dev doesn't pollute
 `~/.m2` with one version per rebuild. `./gradlew publish` / `publishAllPublicationsToWipRepository`
 (root-level invocation runs it in every subproject that has it) pushes to `wip`; `publishToMavenLocal`
 is unaffected by any of this and always available with no credentials.
@@ -399,11 +425,11 @@ its README and CI. The coordinates below are what the plugin picks for itself, a
 need with `viddik { addDependencies = false }`:
 
 - **A KMP consumer module** (e.g. a `jvm("desktop")` target) depends on the base coordinates without a
-  target suffix (`ru.workinprogress:viddik-annotations:0.1.1`, `ru.workinprogress:viddik-testing-core:0.1.1`)
+  target suffix (`ru.workinprogress:viddik-annotations:0.2.0`, `ru.workinprogress:viddik-testing-core:0.2.0`)
   since a KMP-aware consumer resolves the right variant through Gradle module metadata regardless of the
   producer's/consumer's local target *name* matching. KSP processor dependency example:
-  `add("kspDesktopTest", "ru.workinprogress:viddik-processor:0.1.1")`.
+  `add("kspDesktopTest", "ru.workinprogress:viddik-processor:0.2.0")`.
 - **A plain `kotlin("jvm")` consumer module**, NOT KMP-aware, needs the explicit platform-suffixed
-  artifacts instead: `ru.workinprogress:viddik-annotations-desktop:0.1.1` (the `jvm("desktop")` target
-  publication) and `ru.workinprogress:viddik-testing-core-jvm:0.1.1` (the unnamed `jvm()` target
-  publication) plus `kspTest("ru.workinprogress:viddik-processor:0.1.1")`.
+  artifacts instead: `ru.workinprogress:viddik-annotations-desktop:0.2.0` (the `jvm("desktop")` target
+  publication) and `ru.workinprogress:viddik-testing-core-jvm:0.2.0` (the unnamed `jvm()` target
+  publication) plus `kspTest("ru.workinprogress:viddik-processor:0.2.0")`.
