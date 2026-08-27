@@ -11,12 +11,14 @@ import androidx.compose.runtime.ProvidedValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asComposeCanvas
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.scene.ComposeScene
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SkikoComposeUiTest
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -35,6 +37,7 @@ fun captureComposable(
     width: Int = DEFAULT_WIDTH,
     height: Int = AUTO_HEIGHT,
     compositionLocals: List<ProvidedValue<*>> = emptyList(),
+    fontScale: Float = 1f,
     content: @Composable () -> Unit,
 ): BufferedImage {
     val autoHeight = height == AUTO_HEIGHT
@@ -47,7 +50,14 @@ fun captureComposable(
     try {
         runDesktopComposeUiTest(width = width, height = canvasHeight) {
             setContent {
-                CompositionLocalProvider(*compositionLocals.toTypedArray()) {
+                // Only the *font* scale is overridden, never the density itself. A font scale changes how
+                // large text draws inside a canvas of a given size, which is what @Preview.fontScale asks
+                // for; changing the density would also change what a dp is worth, and the whole capture
+                // path treats dp and pixel as the same unit (ViddikDensityTest pins that).
+                CompositionLocalProvider(
+                    LocalDensity provides Density(LocalDensity.current.density, fontScale),
+                    *compositionLocals.toTypedArray(),
+                ) {
                     Box(
                         Modifier
                             .width(width.dp)

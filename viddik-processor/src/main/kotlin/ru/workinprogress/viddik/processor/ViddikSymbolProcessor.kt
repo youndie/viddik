@@ -30,6 +30,16 @@ private const val PREVIEW_PARAMETER_FQN = "androidx.compose.ui.tooling.preview.P
 // androidx.compose.desktop.ui.tooling.preview.Preview is deliberately not read: it cannot serve
 // Android, which is the entire reason for reading @Preview in the first place.
 private const val PREVIEW_FQN = "androidx.compose.ui.tooling.preview.Preview"
+
+// @Preview is repeatable, and a repeatable annotation read off an already-compiled declaration — which
+// is exactly what a multipreview like @PreviewLightDark is — arrives wrapped in its container rather
+// than as several annotations. Both shapes have to be unwrapped.
+private const val PREVIEW_CONTAINER_FQN = "androidx.compose.ui.tooling.preview.Preview.Container"
+private const val PREVIEW_WRAPPER_FQN = "androidx.compose.ui.tooling.preview.PreviewWrapper"
+
+// A multipreview may itself be built out of multipreviews, so collection recurses. The cap is a
+// backstop against an annotation cycle, which the Kotlin compiler permits between annotation classes.
+private const val MAX_MULTIPREVIEW_DEPTH = 8
 private const val GENERATED_PACKAGE = "ru.workinprogress.viddik.generated"
 
 private sealed class ViddikEntry {
@@ -42,6 +52,8 @@ private sealed class ViddikEntry {
         val height: Int,
         val qualifiedFunctionName: String,
         val forceDark: Boolean = false,
+        val fontScale: Float = 1f,
+        val wrapperQualifiedName: String? = null,
     ) : ViddikEntry()
 
     data class Parameterized(
@@ -53,6 +65,8 @@ private sealed class ViddikEntry {
         val providerQualifiedName: String,
         val darkVariant: Boolean,
         val forceDark: Boolean = false,
+        val fontScale: Float = 1f,
+        val wrapperQualifiedName: String? = null,
     ) : ViddikEntry()
 }
 
@@ -151,78 +165,30 @@ class ViddikSymbolProcessor(
                     darkVariant = annotation.argument("darkVariant") as? Boolean == true,
                 )
 
-            val previewAnnotations =
-                symbol.annotations.filter { it.hasQualifiedName(PREVIEW_FQN) }.toList()
-            if (previewAnnotations.size > 1) {
-                // @Preview is repeatable and one entry per annotation is the right answer, but that is a
-                // change to the registry shape rather than to naming, so it is not read yet. Failing here
-                // beats silently capturing the first of several and calling the rest recorded.
+            val previewArgs = collectPreviews(symbol.annotations.toList(), depth = 0)
+
+            val wrappers = collectWrappers(symbol.annotations.toList(), depth = 0).distinct()
+            if (wrappers.size > 1) {
                 logger.error(
-                    "Reading more than one @Preview off a single function is not supported yet; " +
-                        "${symbol.qualifiedName?.asString()} carries ${previewAnnotations.size}. Split them " +
-                        "across functions for now.",
+                    "${symbol.qualifiedName?.asString()} resolves to more than one @PreviewWrapper " +
+                        "(${wrappers.joinToString()}). A fixture can only be wrapped once.",
                     symbol,
                 )
                 continue
             }
-            val previewArgs =
-                previewAnnotations.firstOrNull()?.let { preview ->
-                    PreviewArgs(
-                        name = preview.argument("name") as? String,
-                        group = preview.argument("group") as? String,
-                        widthDp = preview.argument("widthDp") as? Int ?: PREVIEW_UNSET_DP,
-                        heightDp = preview.argument("heightDp") as? Int ?: PREVIEW_UNSET_DP,
-                        uiMode = preview.argument("uiMode") as? Int ?: 0,
-                    )
-                }
 
-            val fixture =
-                resolveFixture(
+            val fixtures =
+                resolveFixtures(
                     functionName = symbol.simpleName.asString(),
                     screenshot = screenshotArgs,
-                    preview = previewArgs,
-                ) { message -> logger.error("${symbol.qualifiedName?.asString()}: $message", symbol) }
-                    ?: continue
+                    previews = previewArgs,
+                    onError = { message -> logger.error("${symbol.qualifiedName?.asString()}: $message", symbol) },
+                    onWarn = { message -> logger.warn("${symbol.qualifiedName?.asString()}: $message", symbol) },
+                )
+            if (fixtures.isEmpty()) continue
 
-            val resolvedName = fixture.name
-            val resolvedGroup = fixture.group
-            val resolvedWidth = fixture.width
-            val resolvedHeight = fixture.height
-            val darkVariantArg = fixture.darkVariant
-
-            if (providerQualifiedName != null) {
-                entries +=
-                    ViddikEntry.Parameterized(
-                        name = resolvedName,
-                        group = resolvedGroup,
-                        width = resolvedWidth,
-                        height = resolvedHeight,
-                        qualifiedFunctionName = qualifiedName,
-                        providerQualifiedName = providerQualifiedName,
-                        darkVariant = darkVariantArg,
-                        forceDark = fixture.dark,
-                    )
-            } else {
-                entries +=
-                    ViddikEntry.Static(
-                        name = resolvedName,
-                        group = resolvedGroup,
-                        width = resolvedWidth,
-                        height = resolvedHeight,
-                        qualifiedFunctionName = qualifiedName,
-                        forceDark = fixture.dark,
-                    )
-                if (darkVariantArg) {
-                    entries +=
-                        ViddikEntry.Static(
-                            name = "$resolvedName Dark",
-                            group = resolvedGroup,
-                            width = resolvedWidth,
-                            height = resolvedHeight,
-                            qualifiedFunctionName = qualifiedName,
-                            forceDark = true,
-                        )
-                }
+            fixtures.forEach { fixture ->
+                entries += fixture.toEntries(qualifiedName, providerQualifiedName, wrappers.firstOrNull())
             }
             symbol.containingFile?.let { sourceFiles += it }
         }
@@ -249,24 +215,26 @@ class ViddikSymbolProcessor(
         entries.forEach { entry ->
             when (entry) {
                 is ViddikEntry.Static -> {
+                    val call = wrapped(CodeBlock.of("%L()", entry.qualifiedFunctionName), entry.wrapperQualifiedName)
                     val contentLambda =
                         if (entry.forceDark) {
                             CodeBlock.of(
-                                "{ %T(%T provides true) { %L() } }",
+                                "{ %T(%T provides true) { %L } }",
                                 compositionLocalProvider,
                                 localScreenshotDarkTheme,
-                                entry.qualifiedFunctionName,
+                                call,
                             )
                         } else {
-                            CodeBlock.of("{ %L() }", entry.qualifiedFunctionName)
+                            CodeBlock.of("{ %L }", call)
                         }
                     initializer.add(
-                        "add(%T(name = %S, group = %S, width = %L, height = %L, content = %L))\n",
+                        "add(%T(name = %S, group = %S, width = %L, height = %L, fontScale = %Lf, content = %L))\n",
                         componentClass,
                         entry.name,
                         entry.group,
                         entry.width,
                         entry.height,
+                        entry.fontScale,
                         contentLambda,
                     )
                 }
@@ -277,22 +245,24 @@ class ViddikSymbolProcessor(
                         ClassName("ru.workinprogress.viddik.annotations", "ViddikPreviewLabel")
                     // A night-mode @Preview makes the fixture itself dark, so the base entry — not just
                     // the extra darkVariant one below — has to be wrapped.
+                    val paramCall =
+                        wrapped(CodeBlock.of("%L(param)", entry.qualifiedFunctionName), entry.wrapperQualifiedName)
                     val baseContent =
                         if (entry.forceDark) {
                             CodeBlock.of(
-                                "{·%T(%T·provides·true)·{·%L(param)·}·}",
+                                "{·%T(%T·provides·true)·{·%L·}·}",
                                 compositionLocalProvider,
                                 localScreenshotDarkTheme,
-                                entry.qualifiedFunctionName,
+                                paramCall,
                             )
                         } else {
-                            CodeBlock.of("{·%L(param)·}", entry.qualifiedFunctionName)
+                            CodeBlock.of("{·%L·}", paramCall)
                         }
                     initializer.add(
                         "addAll(%T().values.mapIndexed·{·index,·param·->·\n" +
                             "··val·label·=·((param·as?·%T)?.previewLabel·?:·param.toString()).take(60)\n" +
                             "··%T(name·=·%S·+·\"·-·\"·+·label·+·\"·#\"·+·index,·group·=·%S,·width·=·%L,·height·=·%L,·" +
-                            "content·=·%L)\n" +
+                            "fontScale·=·%Lf,·content·=·%L)\n" +
                             "}.toList())\n",
                         providerClass,
                         previewLabelClass,
@@ -301,6 +271,7 @@ class ViddikSymbolProcessor(
                         entry.group,
                         entry.width,
                         entry.height,
+                        entry.fontScale,
                         baseContent,
                     )
                     if (entry.darkVariant) {
@@ -308,7 +279,7 @@ class ViddikSymbolProcessor(
                             "addAll(%T().values.mapIndexed·{·index,·param·->·\n" +
                                 "··val·label·=·((param·as?·%T)?.previewLabel·?:·param.toString()).take(60)\n" +
                                 "··%T(name·=·%S·+·\"·-·\"·+·label·+·\"·#\"·+·index·+·\"·Dark\",·group·=·%S,·width·=·%L,·" +
-                                "height·=·%L,·content·=·{·%T(%T·provides·true)·{·%L(param)·} })\n" +
+                                "height·=·%L,·fontScale·=·%Lf,·content·=·{·%T(%T·provides·true)·{·%L·} })\n" +
                                 "}.toList())\n",
                             providerClass,
                             previewLabelClass,
@@ -317,9 +288,10 @@ class ViddikSymbolProcessor(
                             entry.group,
                             entry.width,
                             entry.height,
+                            entry.fontScale,
                             compositionLocalProvider,
                             localScreenshotDarkTheme,
-                            entry.qualifiedFunctionName,
+                            paramCall,
                         )
                     }
                 }
@@ -366,10 +338,152 @@ class ViddikSymbolProcessor(
     }
 }
 
-private fun KSAnnotation.hasQualifiedName(fqn: String): Boolean =
+private fun KSAnnotation.hasQualifiedName(fqn: String): Boolean = qualifiedName() == fqn
+
+private fun KSAnnotation.qualifiedName(): String? =
     annotationType
         .resolve()
         .declaration.qualifiedName
-        ?.asString() == fqn
+        ?.asString()
 
 private fun KSAnnotation.argument(name: String): Any? = arguments.firstOrNull { it.name?.asString() == name }?.value
+
+/**
+ * Every `@Preview` an annotated function resolves to, in declaration order.
+ *
+ * A multipreview is an ordinary annotation class that carries `@Preview`s of its own, so finding them
+ * means walking into annotations' declarations. `@PreviewLightDark` and friends target
+ * `ANNOTATION_CLASS` as well as `FUNCTION`, which is to say a multipreview can be built out of
+ * multipreviews — hence the recursion, and hence [MAX_MULTIPREVIEW_DEPTH], since the compiler happily
+ * accepts a cycle between two annotation classes.
+ */
+private fun collectPreviews(
+    annotations: List<KSAnnotation>,
+    depth: Int,
+): List<PreviewArgs> {
+    if (depth > MAX_MULTIPREVIEW_DEPTH) return emptyList()
+    return annotations.flatMap { annotation ->
+        when (annotation.qualifiedName()) {
+            PREVIEW_FQN -> listOf(annotation.toPreviewArgs())
+            PREVIEW_CONTAINER_FQN -> annotation.containedPreviews().map { it.toPreviewArgs() }
+            // Not a preview itself; it may still be an annotation class that carries some.
+            in SKIPPED_ANNOTATIONS -> emptyList()
+            else ->
+                collectPreviews(
+                    annotation.annotationType
+                        .resolve()
+                        .declaration.annotations
+                        .toList(),
+                    depth + 1,
+                )
+        }
+    }
+}
+
+/** The same walk, for the wrapper a fixture should be composed inside. */
+private fun collectWrappers(
+    annotations: List<KSAnnotation>,
+    depth: Int,
+): List<String> {
+    if (depth > MAX_MULTIPREVIEW_DEPTH) return emptyList()
+    return annotations.flatMap { annotation ->
+        when (annotation.qualifiedName()) {
+            PREVIEW_WRAPPER_FQN ->
+                listOfNotNull(
+                    (annotation.argument("wrapper") as? KSType)?.declaration?.qualifiedName?.asString(),
+                )
+            PREVIEW_FQN, PREVIEW_CONTAINER_FQN -> emptyList()
+            in SKIPPED_ANNOTATIONS -> emptyList()
+            else ->
+                collectWrappers(
+                    annotation.annotationType
+                        .resolve()
+                        .declaration.annotations
+                        .toList(),
+                    depth + 1,
+                )
+        }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun KSAnnotation.containedPreviews(): List<KSAnnotation> =
+    (argument("value") as? List<*>).orEmpty().filterIsInstance<KSAnnotation>()
+
+private fun KSAnnotation.toPreviewArgs() =
+    PreviewArgs(
+        name = argument("name") as? String,
+        group = argument("group") as? String,
+        widthDp = argument("widthDp") as? Int ?: PREVIEW_UNSET_DP,
+        heightDp = argument("heightDp") as? Int ?: PREVIEW_UNSET_DP,
+        uiMode = argument("uiMode") as? Int ?: 0,
+        fontScale = argument("fontScale") as? Float ?: 1f,
+        device = argument("device") as? String ?: "",
+    )
+
+// Walking into these would resolve half of kotlin-stdlib's annotation graph on every fixture, and
+// none of them can carry a @Preview.
+private val SKIPPED_ANNOTATIONS =
+    setOf(
+        COMPOSABLE_FQN,
+        DESKTOP_SCREENSHOT_FQN,
+        PREVIEW_PARAMETER_FQN,
+        "kotlin.Deprecated",
+        "kotlin.Suppress",
+        "kotlin.OptIn",
+        "kotlin.jvm.JvmName",
+    )
+
+private fun FixtureMetadata.toEntries(
+    qualifiedFunctionName: String,
+    providerQualifiedName: String?,
+    wrapperQualifiedName: String?,
+): List<ViddikEntry> {
+    if (providerQualifiedName != null) {
+        return listOf(
+            ViddikEntry.Parameterized(
+                name = name,
+                group = group,
+                width = width,
+                height = height,
+                qualifiedFunctionName = qualifiedFunctionName,
+                providerQualifiedName = providerQualifiedName,
+                darkVariant = darkVariant,
+                forceDark = dark,
+                fontScale = fontScale,
+                wrapperQualifiedName = wrapperQualifiedName,
+            ),
+        )
+    }
+
+    val base =
+        ViddikEntry.Static(
+            name = name,
+            group = group,
+            width = width,
+            height = height,
+            qualifiedFunctionName = qualifiedFunctionName,
+            forceDark = dark,
+            fontScale = fontScale,
+            wrapperQualifiedName = wrapperQualifiedName,
+        )
+    return if (darkVariant) listOf(base, base.copy(name = "$name Dark", forceDark = true)) else listOf(base)
+}
+
+/**
+ * Composes a fixture call inside its `@PreviewWrapper`, if it declared one.
+ *
+ * The provider is instantiated at the call site rather than resolved through anything of viddik's:
+ * `PreviewWrapperProvider.Wrap` is a `@Composable` member, so the generated code is the same shape a
+ * developer would write by hand, and a provider that needs constructor arguments simply doesn't
+ * compile — which is the right moment to find out.
+ */
+private fun wrapped(
+    call: CodeBlock,
+    wrapperQualifiedName: String?,
+): CodeBlock =
+    if (wrapperQualifiedName == null) {
+        call
+    } else {
+        CodeBlock.of("%T().Wrap·{·%L·}", ClassName.bestGuess(wrapperQualifiedName), call)
+    }

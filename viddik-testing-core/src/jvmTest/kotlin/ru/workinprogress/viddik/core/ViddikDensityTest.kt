@@ -38,11 +38,25 @@ class ViddikDensityTest {
                 "1.dp == 1px. That no longer holds, so every size read off a @Preview is now wrong by " +
                 "this factor.",
         )
+        assertEquals(1f, density.fontScale, "an unscaled capture should not be scaling text either")
+    }
+
+    @Test
+    fun `a font scale reaches the fixture without disturbing the density`() {
+        var observed: Density? = null
+
+        captureComposable(width = 8, height = 8, fontScale = 1.5f) {
+            observed = LocalDensity.current
+            Box(Modifier.size(8.dp()))
+        }
+
+        val density = checkNotNull(observed) { "the fixture never composed" }
+        assertEquals(1.5f, density.fontScale, "@Preview.fontScale should reach the composition")
         assertEquals(
             1f,
-            density.fontScale,
-            "@Preview.fontScale is not honoured yet, which is only harmless while the harness's own " +
-                "font scale is 1.",
+            density.density,
+            "scaling text must not scale the canvas: @PreviewFontScale would otherwise resize every " +
+                "golden it produces, and dp would stop being a pixel.",
         )
     }
 }

@@ -114,8 +114,37 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       next to it. `uiMode` is a bit field, so the check is `(uiMode and 0x30) == 0x20`, not equality;
       the constants are mirrored from `AndroidUiModes` rather than depended on, since the processor is
       a plain JVM module with no Compose on its classpath.
-    - Several `@Preview`s on one function is refused, not silently narrowed to the first. Repeatable
-      previews change the registry's shape rather than its naming, so they are a separate change. Rules enforced: must also be `@Composable`;
+    - **Multipreview expansion.** `@Preview` is repeatable and a multipreview is just an annotation
+      class carrying several, so `collectPreviews()` recurses into annotations' *declarations* looking
+      for more. Two shapes have to be unwrapped: `@Preview` written directly, and
+      `Preview.Container` — a repeatable annotation read off an already-compiled declaration (which is
+      what `@PreviewLightDark` is) arrives wrapped. `MAX_MULTIPREVIEW_DEPTH` is a backstop against an
+      annotation cycle, which the compiler permits; `SKIPPED_ANNOTATIONS` keeps the walk from
+      resolving half of stdlib's annotation graph per fixture. With several previews the
+      `@ViddikScreenshot` name becomes a stem (`"$stem - $discriminator"`) — it cannot *be* the name,
+      it would be the same one for all of them — and the discriminator is the preview's own name, or
+      its index when it has none. Every built-in multipreview names its previews
+      (`"Light"`/`"Dark"`, `"85%"`…`"200%"`, `"Phone"`/`"Tablet"`), so the index path is only for
+      hand-rolled ones.
+    - `darkVariant` alongside several previews is an error: it doubles every fixture the function
+      produces, so one `@PreviewFontScale` would quietly become fourteen goldens.
+    - **`fontScale`** is honoured by `CaptureEngine`, which overrides `LocalDensity`'s font scale and
+      *only* its font scale. Scaling the density too would change what a dp is worth and resize every
+      golden `@PreviewFontScale` produces — `ViddikDensityTest` pins both halves of that. Without this,
+      `@PreviewFontScale` would record seven identical images.
+    - **`device`** is read for its size only, and only in the `spec:` form (`parseDeviceSpec`).
+      `dpi`/`orientation`/`isRound` are a density or a device shape a plain canvas has no equivalent
+      for, and a named device (`id:pixel_5`) has its dimensions in Android's catalogue, not in the
+      annotation. Both are `logger.warn` rather than errors on purpose: a fixture carrying `device` for
+      the IDE's sake is still a good fixture, it just doesn't get that device. The size sits *below*
+      an explicit `widthDp`/`heightDp` in precedence and above viddik's default.
+    - **`@PreviewWrapper`** (`collectWrappers()`, same recursive walk) wraps the generated content
+      lambda in `Wrapper().Wrap { fixture() }`. This is the answer to what this file used to call
+      unsolvable — "Typography can't be forced onto a fixture from outside" is still true of the
+      *composition*, but the wrapper is applied at codegen time, outside it. A project's own
+      `@AppPreviews` annotation can therefore carry the bundled-font theme and the light/dark pair at
+      once, and a fixture that forgets its harness stops being a way to record a golden drawn in the
+      host's system font. More than one distinct wrapper resolving onto one function is an error. Rules enforced: must also be `@Composable`;
     all parameters must have defaults, **except** exactly one parameter annotated `@PreviewParameter`
     (mirrors Compose tooling's own convention) — that's the sole non-default-param exception.
     - Static entries (no `@PreviewParameter`) generate one `add(ViddikComponent(...))` call per
@@ -235,7 +264,8 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     absorbing on verify since the CMP 1.12 render-path change. Check `git status` after every record
     and revert the goldens the change wasn't about; the committed ones were verified on three OSes,
     and a local re-record quietly downgrades that to one.
-  - `ViddikDensityTest` (jvmTest) — pins the harness at density 1, i.e. `1.dp == 1px`. The equality was
+  - `ViddikDensityTest` (jvmTest) — pins the harness at density 1, i.e. `1.dp == 1px`, and pins that a
+    font scale moves text without moving the canvas. The equality was
     accidental until `@Preview` support (`CaptureEngine` passed a pixel count into
     `Modifier.width(...dp)` and nothing reconciled the two); now `widthDp` is read straight into a
     capture width, so a changed default would move every golden at once. Asserted rather than forced —
