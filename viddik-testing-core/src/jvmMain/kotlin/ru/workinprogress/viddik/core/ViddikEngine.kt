@@ -32,7 +32,13 @@ object ViddikEngine {
     ) {
         val fileName = fileNameFor(component)
         val goldenFile = File(snapshotsDir, fileName)
-        val actual = captureComposable(width = component.width, height = component.height, content = component.content)
+        val actual =
+            captureComposable(
+                width = component.width,
+                height = component.height,
+                fontScale = component.fontScale,
+                content = component.content,
+            )
 
         if (recordMode) {
             snapshotsDir.mkdirs()

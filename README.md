@@ -92,8 +92,12 @@ Compose Multiplatform line rather than to a range of them — a mismatch shows u
 
 | viddik | Compose Multiplatform | Kotlin |
 |---|---|---|
+| 0.3.x | 1.12.x | 2.4.x |
 | 0.2.x | 1.12.x | 2.4.x |
 | 0.1.x | 1.11.x | 2.4.x |
+
+Reading metadata off `@Preview` needs 0.3.0 or newer, and the `@Preview` it reads is the one Compose
+Multiplatform 1.12 ships in `commonMain`.
 
 An Android consumer of `viddik-annotations` needs `compileSdk = 37` from 0.2.0 on — that is what
 Compose Multiplatform 1.12 requires of everything that depends on it.
@@ -136,6 +140,104 @@ fun AppButtonPrimaryPreview() {
     }
 }
 ```
+
+#### Or let `@Preview` carry the metadata
+
+`@ViddikScreenshot` also works as a bare marker, with the details read off an
+`androidx.compose.ui.tooling.preview.Preview` on the same function:
+
+```kotlin
+@ViddikScreenshot
+@Preview(name = "AppButton - Primary", group = "Buttons", widthDp = 320)
+@Composable
+fun AppButtonPrimaryPreview() {
+    MaterialTheme {
+        Button(onClick = {}) { Text("Continue") }
+    }
+}
+```
+
+Worth doing because that one annotation is read by three different things: the IDE preview pane,
+Android's own screenshot tooling, and viddik. In Compose Multiplatform 1.12 it is literally the same
+`androidx.compose.ui.tooling.preview.Preview` on Android and in `commonMain`, so a fixture declares
+its name and size once and every tool agrees on them.
+
+`@ViddikScreenshot` stays the opt-in and isn't going away: scanning every `@Preview` in a codebase
+would silently turn previews written purely for the IDE into goldens, including the many that can't
+render headless at all.
+
+| `@Preview` field | becomes |
+|---|---|
+| `name`, `group` | the golden name and showroom group |
+| `widthDp`, `heightDp` | the capture size in pixels — viddik renders at density 1 |
+| `uiMode = UI_MODE_NIGHT_YES` | this fixture renders dark |
+
+Precedence per field is: an argument on `@ViddikScreenshot`, then the `@Preview` field, then viddik's
+default — so existing fixtures that spell everything on `@ViddikScreenshot` keep behaving exactly as
+they did.
+
+Note that `uiMode` and `darkVariant` mean different things: `uiMode` says *this* fixture is dark,
+`darkVariant = true` asks for a **second**, dark copy beside the light one. Setting both is an error
+rather than a silently duplicated dark golden.
+
+#### Multipreview
+
+`@Preview` is repeatable, and a multipreview annotation is just an annotation class carrying several
+of them — so one marker gives one fixture per preview, `@PreviewLightDark` and hand-rolled ones alike:
+
+```kotlin
+@Preview(name = "Small", fontScale = 0.85f, widthDp = 320)
+@Preview(name = "Large", fontScale = 1.5f, widthDp = 320)
+annotation class AppTypeScale
+
+@ViddikScreenshot(name = "Body text", group = "Type")
+@AppTypeScale
+@Composable
+fun BodyText() { ... }
+```
+
+That records `Type - Body text - Small` and `Type - Body text - Large`. With several previews the name
+on `@ViddikScreenshot` becomes the stem and each `@Preview` says which one it is; a preview with no
+name of its own falls back to its index, so names can't collapse into each other. Multipreviews built
+out of multipreviews resolve too.
+
+`darkVariant` is refused alongside several previews — it would silently double all of them. Say which
+ones are dark with `@PreviewLightDark` or a night `uiMode` instead.
+
+#### What else `@Preview` carries
+
+`fontScale` is honoured: it scales text inside the capture without resizing the canvas, so
+`@PreviewFontScale` produces genuinely different goldens rather than seven identical ones.
+
+`device` is read only for its size, and only in the `spec:` form — `spec:width=411dp,height=891dp`
+sets the capture size. Everything else a spec can say (`dpi`, `orientation`, `isRound`) is a density or
+a device shape a plain canvas has no equivalent for; those are **warned about and dropped**, not
+errors, because a fixture carrying `device` for the IDE's sake is still a perfectly good fixture. Named
+devices (`id:pixel_5`) are warned about and ignored.
+
+#### `@PreviewWrapper` — the theme, declared once
+
+```kotlin
+class AppPreviewTheme : PreviewWrapperProvider {
+    @Composable
+    override fun Wrap(content: @Composable () -> Unit) {
+        MaterialTheme(typography = viddikTypography(), content = content)
+    }
+}
+
+@ViddikScreenshot
+@PreviewWrapper(AppPreviewTheme::class)
+@Preview(name = "Primary", group = "Buttons")
+@Composable
+fun PrimaryButton() { ... }   // no theme call of its own
+```
+
+This is worth more than it looks. A theme can't be forced onto a composable from outside the
+composition, so until now every fixture had to remember to call the harness that gives it the bundled
+font — and a fixture that forgot produced a golden drawn in the host's system font, which is exactly
+the thing that isn't portable. `@PreviewWrapper` moves that harness into one place, and because the
+annotation can sit on an annotation class, a project's own `@AppPreviews` can carry the theme and the
+light/dark pair together.
 
 This shows up two ways, from the exact same fixture — no duplication between "the test" and "the
 thing a developer clicks through":

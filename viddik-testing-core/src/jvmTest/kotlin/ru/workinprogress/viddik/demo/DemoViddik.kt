@@ -11,6 +11,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.AndroidUiModes
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.tooling.preview.PreviewWrapper
+import androidx.compose.ui.tooling.preview.PreviewWrapperProvider
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
@@ -89,6 +94,99 @@ fun ParameterizedButtonPreview(
             Button(onClick = {}) {
                 Text(label)
             }
+        }
+    }
+}
+
+// The two fixtures below take their metadata from @Preview instead of from @ViddikScreenshot, which
+// stays as the bare opt-in marker. Same declaration the IDE preview pane reads, same one Android's own
+// screenshot tooling reads — in Compose Multiplatform 1.12 it is literally the same
+// androidx.compose.ui.tooling.preview.Preview on both.
+
+@ViddikScreenshot
+@Preview(name = "Preview driven", group = "Demo", widthDp = 320, heightDp = 120)
+@Composable
+fun PreviewDrivenButton() {
+    DemoTheme {
+        Surface {
+            Button(onClick = {}) {
+                Text("From Preview")
+            }
+        }
+    }
+}
+
+// uiMode says this fixture *is* dark, which is not the same as darkVariant asking for a second, dark
+// copy of a light one — hence a single golden here, and no " Dark" suffix on its name.
+@ViddikScreenshot
+@Preview(name = "Preview driven night", group = "Demo", widthDp = 320, uiMode = AndroidUiModes.UI_MODE_NIGHT_YES)
+@Composable
+fun PreviewDrivenNightButton() {
+    DemoTheme {
+        Surface {
+            Button(onClick = {}) {
+                Text("Night from Preview")
+            }
+        }
+    }
+}
+
+// --- Multipreview -----------------------------------------------------------------------------
+//
+// A multipreview is an ordinary annotation class carrying @Preview annotations, so one marker yields
+// one fixture per preview. @PreviewLightDark is the shipped one; DemoTypeScale below is a hand-rolled
+// one, which is also how the processor's recursion gets exercised.
+
+@ViddikScreenshot(name = "Light dark", group = "Demo")
+@PreviewLightDark
+@Composable
+fun MultiPreviewButton() {
+    DemoTheme {
+        Surface {
+            Button(onClick = {}) {
+                Text("Light or dark")
+            }
+        }
+    }
+}
+
+@Preview(name = "Small", fontScale = 0.85f, widthDp = 320)
+@Preview(name = "Large", fontScale = 1.5f, widthDp = 320)
+annotation class DemoTypeScale
+
+@ViddikScreenshot(name = "Type scale", group = "Demo")
+@DemoTypeScale
+@Composable
+fun FontScaledText() {
+    DemoTheme {
+        Surface {
+            Text("Scaled type")
+        }
+    }
+}
+
+// --- @PreviewWrapper --------------------------------------------------------------------------
+//
+// The fixture below deliberately does NOT call DemoTheme: the wrapper supplies it. That is the point
+// of @PreviewWrapper — the bundled-font typography that makes a golden portable is exactly the kind of
+// harness every fixture used to have to remember for itself, since a theme cannot be forced on a
+// composable from outside the composition.
+
+class DemoThemeWrapper : PreviewWrapperProvider {
+    @Composable
+    override fun Wrap(content: @Composable () -> Unit) {
+        DemoTheme(content = content)
+    }
+}
+
+@ViddikScreenshot
+@PreviewWrapper(DemoThemeWrapper::class)
+@Preview(name = "Wrapped", group = "Demo", widthDp = 320)
+@Composable
+fun UnthemedButton() {
+    Surface {
+        Button(onClick = {}) {
+            Text("Themed by the wrapper")
         }
     }
 }

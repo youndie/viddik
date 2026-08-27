@@ -16,11 +16,15 @@ history for the exact rename map if cross-referencing old code/docs that still s
 ## Build & Test Commands
 
 ```bash
-./gradlew build                                  # Build all 4 modules
+./gradlew build                                  # Build all 4 modules, and the whole gate: ktlint, the
+                                                   # goldens, and both unit-test suites
 ./gradlew :viddik-testing-core:jvmTest            # Self-test suite (DemoViddik.kt) — NOT `test`, the
                                                    # module's jvm() target is unnamed so Gradle names the
                                                    # task jvmTest, not test (that only applies to plain
                                                    # kotlin("jvm") consumer modules like dev:uikit-sandbox)
+./gradlew :viddik-processor:test                  # Fixture-metadata resolution (FixtureMetadataTest) —
+                                                   # plain kotlin("jvm"), so `test`, not `jvmTest`
+./gradlew :viddik-gradle-plugin:test              # ViddikLayoutTest, the naming fork
 ./gradlew ktlintCheck                             # Style check (all 4 modules; jvmTest sourceSet in
                                                    # viddik-testing-core is deliberately excluded, see
                                                    # its build.gradle.kts — KSP-generated code lives there)
@@ -29,7 +33,9 @@ history for the exact rename map if cross-referencing old code/docs that still s
 ./gradlew publishToMavenLocal                     # Publish all 4 modules for local consumers to pick up
 ./gradlew :viddik-processor:publishToMavenLocal   # Single module, e.g. after a processor-only change
 VIDDIK_RECORD_MODE=true ./gradlew :viddik-testing-core:jvmTest --tests "*runAllScreenshots*"
-                                                   # Re-record the self-test golden PNGs (src/jvmTest/snapshots/)
+                                                   # Re-record the self-test golden PNGs (src/jvmTest/snapshots/).
+                                                   # This rewrites EVERY golden, not the ones you changed —
+                                                   # always `git status` afterwards and revert the rest.
 ```
 
 CI: `.github/workflows/verify-goldens.yaml` runs `:viddik-testing-core:jvmTest` on every pull request
@@ -42,7 +48,7 @@ signal working, not a flake.
 
 Downstream consumers resolve `ru.workinprogress:viddik-*` via `mavenLocal()` — after any change here,
 `publishToMavenLocal` before rebuilding them. Versions are bumped by hand in
-`gradle.properties` (`viddik.version`, currently `0.2.0`); Gradle/consumers cache by exact version+build
+`gradle.properties` (`viddik.version`, currently `0.3.0`); Gradle/consumers cache by exact version+build
 hash so a republish under the same version is picked up by build cache invalidation, not by version
 diffing — if a consumer's build looks stale after a republish, `--no-build-cache` or bump the version.
 
@@ -56,7 +62,12 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
 - **viddik-annotations** — Kotlin Multiplatform (`android()` + `jvm("desktop")`), Compose Multiplatform
   UI only (LazyColumn/Text/clickable — no platform APIs), so adding targets here is unconstrained.
   - `ViddikScreenshot` (`annotations/ViddikScreenshot.kt`) — the marker annotation (`name`, `group`,
-    `width` default 400, `height` default `AUTO_HEIGHT`, `darkVariant`).
+    `width`, `height`, `darkVariant`). Every size parameter defaults to `UNSPECIFIED`
+    (`Int.MIN_VALUE`, in `ViddikComponent.kt`) rather than to its old literal, because KSP substitutes
+    defaults before the processor sees them: without a value nobody would write by hand, "omitted" and
+    "written out as 400" are indistinguishable, and falling back to `@Preview` would override a
+    deliberate 400. Resolution order per field is argument here → `@Preview` field → viddik default
+    (400 / `AUTO_HEIGHT` / `"Default"` / the function's own name).
   - `ViddikComponent` (`annotations/ViddikComponent.kt`) — runtime data class the processor emits into
     the generated registry (`name`, `group`, `width`, `height`, `content: @Composable () -> Unit`).
     `AUTO_HEIGHT = -1` lives here too.
@@ -86,8 +97,60 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     (`environment.options["viddik.generateTests"] != "false"`) — consumers that only want the browser
     registry and not JUnit5 test generation (e.g. an Android app module) set
     `ksp { arg("viddik.generateTests", "false") }`.
+  - `FixtureMetadata.kt` — how a fixture's name, size and theme are decided, deliberately free of KSP
+    so it can be unit-tested without standing up a compilation (`FixtureMetadataTest`, 12 tests; this
+    module had no test source set before). `resolveFixture()` takes `ScreenshotArgs` + a nullable
+    `PreviewArgs` and returns null after reporting through an `onError` callback rather than picking a
+    winner when the two contradict each other.
   - `ViddikSymbolProcessor` — scans `@ViddikScreenshot`-annotated functions, one-shot (`invoked` guard,
-    since KSP calls `process()` repeatedly across rounds). Rules enforced: must also be `@Composable`;
+    since KSP calls `process()` repeatedly across rounds). Also reads
+    `androidx.compose.ui.tooling.preview.Preview` off the same function when there is one —
+    `name`/`group`/`widthDp`/`heightDp`/`uiMode`. That exact FQN is the point: Compose Multiplatform
+    1.12 ships it in common and it is the same one Android uses, so a single annotation is read by the
+    IDE preview pane, by Android's screenshot tooling and by viddik. The legacy
+    `androidx.compose.desktop.ui.tooling.preview.Preview` is deliberately not read — it cannot serve
+    Android, which is the whole reason for reading `@Preview` at all. Bare `@Preview` is **not**
+    scanned: `@ViddikScreenshot` stays the opt-in, because capturing every preview in a codebase would
+    turn IDE-only previews into goldens, most of which cannot render headless (the official Android
+    tool reached the same conclusion with its own separate `@PreviewTest` marker).
+    - `uiMode` and `darkVariant` are different questions and must not be conflated: `uiMode =
+      UI_MODE_NIGHT_YES` says *this* fixture is dark (one entry, wrapped in the dark composition local,
+      no `" Dark"` suffix), while `darkVariant = true` asks for a *second* entry beside a light one.
+      Both at once is a hard error — the alternative is a dark golden with an identical dark golden
+      next to it. `uiMode` is a bit field, so the check is `(uiMode and 0x30) == 0x20`, not equality;
+      the constants are mirrored from `AndroidUiModes` rather than depended on, since the processor is
+      a plain JVM module with no Compose on its classpath.
+    - **Multipreview expansion.** `@Preview` is repeatable and a multipreview is just an annotation
+      class carrying several, so `collectPreviews()` recurses into annotations' *declarations* looking
+      for more. Two shapes have to be unwrapped: `@Preview` written directly, and
+      `Preview.Container` — a repeatable annotation read off an already-compiled declaration (which is
+      what `@PreviewLightDark` is) arrives wrapped. `MAX_MULTIPREVIEW_DEPTH` is a backstop against an
+      annotation cycle, which the compiler permits; `SKIPPED_ANNOTATIONS` keeps the walk from
+      resolving half of stdlib's annotation graph per fixture. With several previews the
+      `@ViddikScreenshot` name becomes a stem (`"$stem - $discriminator"`) — it cannot *be* the name,
+      it would be the same one for all of them — and the discriminator is the preview's own name, or
+      its index when it has none. Every built-in multipreview names its previews
+      (`"Light"`/`"Dark"`, `"85%"`…`"200%"`, `"Phone"`/`"Tablet"`), so the index path is only for
+      hand-rolled ones.
+    - `darkVariant` alongside several previews is an error: it doubles every fixture the function
+      produces, so one `@PreviewFontScale` would quietly become fourteen goldens.
+    - **`fontScale`** is honoured by `CaptureEngine`, which overrides `LocalDensity`'s font scale and
+      *only* its font scale. Scaling the density too would change what a dp is worth and resize every
+      golden `@PreviewFontScale` produces — `ViddikDensityTest` pins both halves of that. Without this,
+      `@PreviewFontScale` would record seven identical images.
+    - **`device`** is read for its size only, and only in the `spec:` form (`parseDeviceSpec`).
+      `dpi`/`orientation`/`isRound` are a density or a device shape a plain canvas has no equivalent
+      for, and a named device (`id:pixel_5`) has its dimensions in Android's catalogue, not in the
+      annotation. Both are `logger.warn` rather than errors on purpose: a fixture carrying `device` for
+      the IDE's sake is still a good fixture, it just doesn't get that device. The size sits *below*
+      an explicit `widthDp`/`heightDp` in precedence and above viddik's default.
+    - **`@PreviewWrapper`** (`collectWrappers()`, same recursive walk) wraps the generated content
+      lambda in `Wrapper().Wrap { fixture() }`. This is the answer to what this file used to call
+      unsolvable — "Typography can't be forced onto a fixture from outside" is still true of the
+      *composition*, but the wrapper is applied at codegen time, outside it. A project's own
+      `@AppPreviews` annotation can therefore carry the bundled-font theme and the light/dark pair at
+      once, and a fixture that forgets its harness stops being a way to record a golden drawn in the
+      host's system font. More than one distinct wrapper resolving onto one function is an error. Rules enforced: must also be `@Composable`;
     all parameters must have defaults, **except** exactly one parameter annotated `@PreviewParameter`
     (mirrors Compose tooling's own convention) — that's the sole non-default-param exception.
     - Static entries (no `@PreviewParameter`) generate one `add(ViddikComponent(...))` call per
@@ -201,6 +264,18 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     recorded on Windows and verify green on Linux (and vice versa), so a failure here is a real
     regression, not rendering noise; re-record with `VIDDIK_RECORD_MODE=true` and visually check the
     PNG (and the `_DIFF.png` in `build/reports/screenshots/`) before trusting either outcome.
+    **Recording to add one fixture rewrites all of them**, and a golden that differs only within
+    tolerance still gets a new file: adding the two `@Preview`-driven fixtures rewrote
+    `Demo_Simple_Text*.png` by a single pixel at channel deviation 2 — noise the tolerance had been
+    absorbing on verify since the CMP 1.12 render-path change. Check `git status` after every record
+    and revert the goldens the change wasn't about; the committed ones were verified on three OSes,
+    and a local re-record quietly downgrades that to one.
+  - `ViddikDensityTest` (jvmTest) — pins the harness at density 1, i.e. `1.dp == 1px`, and pins that a
+    font scale moves text without moving the canvas. The equality was
+    accidental until `@Preview` support (`CaptureEngine` passed a pixel count into
+    `Modifier.width(...dp)` and nothing reconciled the two); now `widthDp` is read straight into a
+    capture width, so a changed default would move every golden at once. Asserted rather than forced —
+    overriding `LocalDensity` would move the goldens now, on a guess.
 
 - **viddik-gradle-plugin** — plain `kotlin("jvm")` + `java-gradle-plugin`, plugin id
   `ru.workinprogress.viddik`. Exists because the wiring it replaces was copied by hand into every
@@ -390,8 +465,8 @@ snapshot.yaml`) still supplies them as plain environment variables prefixed `ORG
 (`ORG_GRADLE_PROJECT_REPOSILITE_USER` etc.), which Gradle auto-maps to project properties, so
 `findProperty("REPOSILITE_USER")` sees them without any extra wiring. The `VERSION` property, when
 present, overrides the version of every registered `MavenPublication` at publish time only (base
-version + build number, e.g. `0.2.0.482` — computed by the workflow's "Determine version" step) —
-`publishToMavenLocal` never sees it and always publishes plain `0.2.0`, so local dev doesn't pollute
+version + build number, e.g. `0.3.0.482` — computed by the workflow's "Determine version" step) —
+`publishToMavenLocal` never sees it and always publishes plain `0.3.0`, so local dev doesn't pollute
 `~/.m2` with one version per rebuild. `./gradlew publish` / `publishAllPublicationsToWipRepository`
 (root-level invocation runs it in every subproject that has it) pushes to `wip`; `publishToMavenLocal`
 is unaffected by any of this and always available with no credentials.
@@ -425,11 +500,11 @@ its README and CI. The coordinates below are what the plugin picks for itself, a
 need with `viddik { addDependencies = false }`:
 
 - **A KMP consumer module** (e.g. a `jvm("desktop")` target) depends on the base coordinates without a
-  target suffix (`ru.workinprogress:viddik-annotations:0.2.0`, `ru.workinprogress:viddik-testing-core:0.2.0`)
+  target suffix (`ru.workinprogress:viddik-annotations:0.3.0`, `ru.workinprogress:viddik-testing-core:0.3.0`)
   since a KMP-aware consumer resolves the right variant through Gradle module metadata regardless of the
   producer's/consumer's local target *name* matching. KSP processor dependency example:
-  `add("kspDesktopTest", "ru.workinprogress:viddik-processor:0.2.0")`.
+  `add("kspDesktopTest", "ru.workinprogress:viddik-processor:0.3.0")`.
 - **A plain `kotlin("jvm")` consumer module**, NOT KMP-aware, needs the explicit platform-suffixed
-  artifacts instead: `ru.workinprogress:viddik-annotations-desktop:0.2.0` (the `jvm("desktop")` target
-  publication) and `ru.workinprogress:viddik-testing-core-jvm:0.2.0` (the unnamed `jvm()` target
-  publication) plus `kspTest("ru.workinprogress:viddik-processor:0.2.0")`.
+  artifacts instead: `ru.workinprogress:viddik-annotations-desktop:0.3.0` (the `jvm("desktop")` target
+  publication) and `ru.workinprogress:viddik-testing-core-jvm:0.3.0` (the unnamed `jvm()` target
+  publication) plus `kspTest("ru.workinprogress:viddik-processor:0.3.0")`.
