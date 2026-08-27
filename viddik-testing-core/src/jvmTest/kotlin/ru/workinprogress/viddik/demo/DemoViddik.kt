@@ -11,6 +11,8 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.AndroidUiModes
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
@@ -88,6 +90,39 @@ fun ParameterizedButtonPreview(
         Surface {
             Button(onClick = {}) {
                 Text(label)
+            }
+        }
+    }
+}
+
+// The two fixtures below take their metadata from @Preview instead of from @ViddikScreenshot, which
+// stays as the bare opt-in marker. Same declaration the IDE preview pane reads, same one Android's own
+// screenshot tooling reads — in Compose Multiplatform 1.12 it is literally the same
+// androidx.compose.ui.tooling.preview.Preview on both.
+
+@ViddikScreenshot
+@Preview(name = "Preview driven", group = "Demo", widthDp = 320, heightDp = 120)
+@Composable
+fun PreviewDrivenButton() {
+    DemoTheme {
+        Surface {
+            Button(onClick = {}) {
+                Text("From Preview")
+            }
+        }
+    }
+}
+
+// uiMode says this fixture *is* dark, which is not the same as darkVariant asking for a second, dark
+// copy of a light one — hence a single golden here, and no " Dark" suffix on its name.
+@ViddikScreenshot
+@Preview(name = "Preview driven night", group = "Demo", widthDp = 320, uiMode = AndroidUiModes.UI_MODE_NIGHT_YES)
+@Composable
+fun PreviewDrivenNightButton() {
+    DemoTheme {
+        Surface {
+            Button(onClick = {}) {
+                Text("Night from Preview")
             }
         }
     }

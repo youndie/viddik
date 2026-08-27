@@ -56,7 +56,12 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
 - **viddik-annotations** — Kotlin Multiplatform (`android()` + `jvm("desktop")`), Compose Multiplatform
   UI only (LazyColumn/Text/clickable — no platform APIs), so adding targets here is unconstrained.
   - `ViddikScreenshot` (`annotations/ViddikScreenshot.kt`) — the marker annotation (`name`, `group`,
-    `width` default 400, `height` default `AUTO_HEIGHT`, `darkVariant`).
+    `width`, `height`, `darkVariant`). Every size parameter defaults to `UNSPECIFIED`
+    (`Int.MIN_VALUE`, in `ViddikComponent.kt`) rather than to its old literal, because KSP substitutes
+    defaults before the processor sees them: without a value nobody would write by hand, "omitted" and
+    "written out as 400" are indistinguishable, and falling back to `@Preview` would override a
+    deliberate 400. Resolution order per field is argument here → `@Preview` field → viddik default
+    (400 / `AUTO_HEIGHT` / `"Default"` / the function's own name).
   - `ViddikComponent` (`annotations/ViddikComponent.kt`) — runtime data class the processor emits into
     the generated registry (`name`, `group`, `width`, `height`, `content: @Composable () -> Unit`).
     `AUTO_HEIGHT = -1` lives here too.
@@ -86,8 +91,31 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     (`environment.options["viddik.generateTests"] != "false"`) — consumers that only want the browser
     registry and not JUnit5 test generation (e.g. an Android app module) set
     `ksp { arg("viddik.generateTests", "false") }`.
+  - `FixtureMetadata.kt` — how a fixture's name, size and theme are decided, deliberately free of KSP
+    so it can be unit-tested without standing up a compilation (`FixtureMetadataTest`, 12 tests; this
+    module had no test source set before). `resolveFixture()` takes `ScreenshotArgs` + a nullable
+    `PreviewArgs` and returns null after reporting through an `onError` callback rather than picking a
+    winner when the two contradict each other.
   - `ViddikSymbolProcessor` — scans `@ViddikScreenshot`-annotated functions, one-shot (`invoked` guard,
-    since KSP calls `process()` repeatedly across rounds). Rules enforced: must also be `@Composable`;
+    since KSP calls `process()` repeatedly across rounds). Also reads
+    `androidx.compose.ui.tooling.preview.Preview` off the same function when there is one —
+    `name`/`group`/`widthDp`/`heightDp`/`uiMode`. That exact FQN is the point: Compose Multiplatform
+    1.12 ships it in common and it is the same one Android uses, so a single annotation is read by the
+    IDE preview pane, by Android's screenshot tooling and by viddik. The legacy
+    `androidx.compose.desktop.ui.tooling.preview.Preview` is deliberately not read — it cannot serve
+    Android, which is the whole reason for reading `@Preview` at all. Bare `@Preview` is **not**
+    scanned: `@ViddikScreenshot` stays the opt-in, because capturing every preview in a codebase would
+    turn IDE-only previews into goldens, most of which cannot render headless (the official Android
+    tool reached the same conclusion with its own separate `@PreviewTest` marker).
+    - `uiMode` and `darkVariant` are different questions and must not be conflated: `uiMode =
+      UI_MODE_NIGHT_YES` says *this* fixture is dark (one entry, wrapped in the dark composition local,
+      no `" Dark"` suffix), while `darkVariant = true` asks for a *second* entry beside a light one.
+      Both at once is a hard error — the alternative is a dark golden with an identical dark golden
+      next to it. `uiMode` is a bit field, so the check is `(uiMode and 0x30) == 0x20`, not equality;
+      the constants are mirrored from `AndroidUiModes` rather than depended on, since the processor is
+      a plain JVM module with no Compose on its classpath.
+    - Several `@Preview`s on one function is refused, not silently narrowed to the first. Repeatable
+      previews change the registry's shape rather than its naming, so they are a separate change. Rules enforced: must also be `@Composable`;
     all parameters must have defaults, **except** exactly one parameter annotated `@PreviewParameter`
     (mirrors Compose tooling's own convention) — that's the sole non-default-param exception.
     - Static entries (no `@PreviewParameter`) generate one `add(ViddikComponent(...))` call per
@@ -201,6 +229,17 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     recorded on Windows and verify green on Linux (and vice versa), so a failure here is a real
     regression, not rendering noise; re-record with `VIDDIK_RECORD_MODE=true` and visually check the
     PNG (and the `_DIFF.png` in `build/reports/screenshots/`) before trusting either outcome.
+    **Recording to add one fixture rewrites all of them**, and a golden that differs only within
+    tolerance still gets a new file: adding the two `@Preview`-driven fixtures rewrote
+    `Demo_Simple_Text*.png` by a single pixel at channel deviation 2 — noise the tolerance had been
+    absorbing on verify since the CMP 1.12 render-path change. Check `git status` after every record
+    and revert the goldens the change wasn't about; the committed ones were verified on three OSes,
+    and a local re-record quietly downgrades that to one.
+  - `ViddikDensityTest` (jvmTest) — pins the harness at density 1, i.e. `1.dp == 1px`. The equality was
+    accidental until `@Preview` support (`CaptureEngine` passed a pixel count into
+    `Modifier.width(...dp)` and nothing reconciled the two); now `widthDp` is read straight into a
+    capture width, so a changed default would move every golden at once. Asserted rather than forced —
+    overriding `LocalDensity` would move the goldens now, on a guess.
 
 - **viddik-gradle-plugin** — plain `kotlin("jvm")` + `java-gradle-plugin`, plugin id
   `ru.workinprogress.viddik`. Exists because the wiring it replaces was copied by hand into every

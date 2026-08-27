@@ -137,6 +137,49 @@ fun AppButtonPrimaryPreview() {
 }
 ```
 
+#### Or let `@Preview` carry the metadata
+
+`@ViddikScreenshot` also works as a bare marker, with the details read off an
+`androidx.compose.ui.tooling.preview.Preview` on the same function:
+
+```kotlin
+@ViddikScreenshot
+@Preview(name = "AppButton - Primary", group = "Buttons", widthDp = 320)
+@Composable
+fun AppButtonPrimaryPreview() {
+    MaterialTheme {
+        Button(onClick = {}) { Text("Continue") }
+    }
+}
+```
+
+Worth doing because that one annotation is read by three different things: the IDE preview pane,
+Android's own screenshot tooling, and viddik. In Compose Multiplatform 1.12 it is literally the same
+`androidx.compose.ui.tooling.preview.Preview` on Android and in `commonMain`, so a fixture declares
+its name and size once and every tool agrees on them.
+
+`@ViddikScreenshot` stays the opt-in and isn't going away: scanning every `@Preview` in a codebase
+would silently turn previews written purely for the IDE into goldens, including the many that can't
+render headless at all.
+
+| `@Preview` field | becomes |
+|---|---|
+| `name`, `group` | the golden name and showroom group |
+| `widthDp`, `heightDp` | the capture size in pixels — viddik renders at density 1 |
+| `uiMode = UI_MODE_NIGHT_YES` | this fixture renders dark |
+
+Precedence per field is: an argument on `@ViddikScreenshot`, then the `@Preview` field, then viddik's
+default — so existing fixtures that spell everything on `@ViddikScreenshot` keep behaving exactly as
+they did.
+
+Note that `uiMode` and `darkVariant` mean different things: `uiMode` says *this* fixture is dark,
+`darkVariant = true` asks for a **second**, dark copy beside the light one. Setting both is an error
+rather than a silently duplicated dark golden.
+
+Reading more than one `@Preview` off a single function isn't supported yet — repeatable previews are
+a change to the registry shape, and the processor fails loudly rather than capturing the first and
+calling the rest recorded.
+
 This shows up two ways, from the exact same fixture — no duplication between "the test" and "the
 thing a developer clicks through":
 

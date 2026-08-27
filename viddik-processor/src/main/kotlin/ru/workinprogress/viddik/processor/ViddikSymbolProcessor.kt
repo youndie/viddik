@@ -6,6 +6,7 @@ import com.google.devtools.ksp.processing.KSPLogger
 import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.processing.SymbolProcessor
 import com.google.devtools.ksp.symbol.KSAnnotated
+import com.google.devtools.ksp.symbol.KSAnnotation
 import com.google.devtools.ksp.symbol.KSFile
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSType
@@ -22,6 +23,13 @@ import com.squareup.kotlinpoet.ksp.writeTo
 private const val DESKTOP_SCREENSHOT_FQN = "ru.workinprogress.viddik.annotations.ViddikScreenshot"
 private const val COMPOSABLE_FQN = "androidx.compose.runtime.Composable"
 private const val PREVIEW_PARAMETER_FQN = "androidx.compose.ui.tooling.preview.PreviewParameter"
+
+// Compose Multiplatform 1.12 ships this exact fully-qualified name in common, which is also the one
+// Android uses — so a single @Preview is understood by the IDE preview pane, by Android's screenshot
+// tooling and by viddik. The legacy desktop-only
+// androidx.compose.desktop.ui.tooling.preview.Preview is deliberately not read: it cannot serve
+// Android, which is the entire reason for reading @Preview in the first place.
+private const val PREVIEW_FQN = "androidx.compose.ui.tooling.preview.Preview"
 private const val GENERATED_PACKAGE = "ru.workinprogress.viddik.generated"
 
 private sealed class ViddikEntry {
@@ -44,6 +52,7 @@ private sealed class ViddikEntry {
         val qualifiedFunctionName: String,
         val providerQualifiedName: String,
         val darkVariant: Boolean,
+        val forceDark: Boolean = false,
     ) : ViddikEntry()
 }
 
@@ -133,17 +142,53 @@ class ViddikSymbolProcessor(
                         .declaration.qualifiedName
                         ?.asString() == DESKTOP_SCREENSHOT_FQN
                 }
-            val nameArg = annotation.arguments.firstOrNull { it.name?.asString() == "name" }?.value as? String
-            val groupArg = annotation.arguments.firstOrNull { it.name?.asString() == "group" }?.value as? String
-            val widthArg = annotation.arguments.firstOrNull { it.name?.asString() == "width" }?.value as? Int
-            val heightArg = annotation.arguments.firstOrNull { it.name?.asString() == "height" }?.value as? Int
-            val darkVariantArg =
-                annotation.arguments.firstOrNull { it.name?.asString() == "darkVariant" }?.value as? Boolean
+            val screenshotArgs =
+                ScreenshotArgs(
+                    name = annotation.argument("name") as? String,
+                    group = annotation.argument("group") as? String,
+                    width = annotation.argument("width") as? Int,
+                    height = annotation.argument("height") as? Int,
+                    darkVariant = annotation.argument("darkVariant") as? Boolean == true,
+                )
 
-            val resolvedName = nameArg?.takeIf { it.isNotBlank() } ?: symbol.simpleName.asString()
-            val resolvedGroup = groupArg?.takeIf { it.isNotBlank() } ?: "Default"
-            val resolvedWidth = widthArg ?: 400
-            val resolvedHeight = heightArg ?: -1
+            val previewAnnotations =
+                symbol.annotations.filter { it.hasQualifiedName(PREVIEW_FQN) }.toList()
+            if (previewAnnotations.size > 1) {
+                // @Preview is repeatable and one entry per annotation is the right answer, but that is a
+                // change to the registry shape rather than to naming, so it is not read yet. Failing here
+                // beats silently capturing the first of several and calling the rest recorded.
+                logger.error(
+                    "Reading more than one @Preview off a single function is not supported yet; " +
+                        "${symbol.qualifiedName?.asString()} carries ${previewAnnotations.size}. Split them " +
+                        "across functions for now.",
+                    symbol,
+                )
+                continue
+            }
+            val previewArgs =
+                previewAnnotations.firstOrNull()?.let { preview ->
+                    PreviewArgs(
+                        name = preview.argument("name") as? String,
+                        group = preview.argument("group") as? String,
+                        widthDp = preview.argument("widthDp") as? Int ?: PREVIEW_UNSET_DP,
+                        heightDp = preview.argument("heightDp") as? Int ?: PREVIEW_UNSET_DP,
+                        uiMode = preview.argument("uiMode") as? Int ?: 0,
+                    )
+                }
+
+            val fixture =
+                resolveFixture(
+                    functionName = symbol.simpleName.asString(),
+                    screenshot = screenshotArgs,
+                    preview = previewArgs,
+                ) { message -> logger.error("${symbol.qualifiedName?.asString()}: $message", symbol) }
+                    ?: continue
+
+            val resolvedName = fixture.name
+            val resolvedGroup = fixture.group
+            val resolvedWidth = fixture.width
+            val resolvedHeight = fixture.height
+            val darkVariantArg = fixture.darkVariant
 
             if (providerQualifiedName != null) {
                 entries +=
@@ -154,7 +199,8 @@ class ViddikSymbolProcessor(
                         height = resolvedHeight,
                         qualifiedFunctionName = qualifiedName,
                         providerQualifiedName = providerQualifiedName,
-                        darkVariant = darkVariantArg == true,
+                        darkVariant = darkVariantArg,
+                        forceDark = fixture.dark,
                     )
             } else {
                 entries +=
@@ -164,8 +210,9 @@ class ViddikSymbolProcessor(
                         width = resolvedWidth,
                         height = resolvedHeight,
                         qualifiedFunctionName = qualifiedName,
+                        forceDark = fixture.dark,
                     )
-                if (darkVariantArg == true) {
+                if (darkVariantArg) {
                     entries +=
                         ViddikEntry.Static(
                             name = "$resolvedName Dark",
@@ -228,11 +275,24 @@ class ViddikSymbolProcessor(
                     val providerClass = ClassName.bestGuess(entry.providerQualifiedName)
                     val previewLabelClass =
                         ClassName("ru.workinprogress.viddik.annotations", "ViddikPreviewLabel")
+                    // A night-mode @Preview makes the fixture itself dark, so the base entry — not just
+                    // the extra darkVariant one below — has to be wrapped.
+                    val baseContent =
+                        if (entry.forceDark) {
+                            CodeBlock.of(
+                                "{·%T(%T·provides·true)·{·%L(param)·}·}",
+                                compositionLocalProvider,
+                                localScreenshotDarkTheme,
+                                entry.qualifiedFunctionName,
+                            )
+                        } else {
+                            CodeBlock.of("{·%L(param)·}", entry.qualifiedFunctionName)
+                        }
                     initializer.add(
                         "addAll(%T().values.mapIndexed·{·index,·param·->·\n" +
                             "··val·label·=·((param·as?·%T)?.previewLabel·?:·param.toString()).take(60)\n" +
                             "··%T(name·=·%S·+·\"·-·\"·+·label·+·\"·#\"·+·index,·group·=·%S,·width·=·%L,·height·=·%L,·" +
-                            "content·=·{·%L(param)·})\n" +
+                            "content·=·%L)\n" +
                             "}.toList())\n",
                         providerClass,
                         previewLabelClass,
@@ -241,7 +301,7 @@ class ViddikSymbolProcessor(
                         entry.group,
                         entry.width,
                         entry.height,
-                        entry.qualifiedFunctionName,
+                        baseContent,
                     )
                     if (entry.darkVariant) {
                         initializer.add(
@@ -305,3 +365,11 @@ class ViddikSymbolProcessor(
             .writeTo(codeGenerator, dependencies)
     }
 }
+
+private fun KSAnnotation.hasQualifiedName(fqn: String): Boolean =
+    annotationType
+        .resolve()
+        .declaration.qualifiedName
+        ?.asString() == fqn
+
+private fun KSAnnotation.argument(name: String): Any? = arguments.firstOrNull { it.name?.asString() == name }?.value
