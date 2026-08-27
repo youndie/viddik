@@ -16,11 +16,15 @@ history for the exact rename map if cross-referencing old code/docs that still s
 ## Build & Test Commands
 
 ```bash
-./gradlew build                                  # Build all 4 modules
+./gradlew build                                  # Build all 4 modules, and the whole gate: ktlint, the
+                                                   # goldens, and both unit-test suites
 ./gradlew :viddik-testing-core:jvmTest            # Self-test suite (DemoViddik.kt) — NOT `test`, the
                                                    # module's jvm() target is unnamed so Gradle names the
                                                    # task jvmTest, not test (that only applies to plain
                                                    # kotlin("jvm") consumer modules like dev:uikit-sandbox)
+./gradlew :viddik-processor:test                  # Fixture-metadata resolution (FixtureMetadataTest) —
+                                                   # plain kotlin("jvm"), so `test`, not `jvmTest`
+./gradlew :viddik-gradle-plugin:test              # ViddikLayoutTest, the naming fork
 ./gradlew ktlintCheck                             # Style check (all 4 modules; jvmTest sourceSet in
                                                    # viddik-testing-core is deliberately excluded, see
                                                    # its build.gradle.kts — KSP-generated code lives there)
@@ -29,7 +33,9 @@ history for the exact rename map if cross-referencing old code/docs that still s
 ./gradlew publishToMavenLocal                     # Publish all 4 modules for local consumers to pick up
 ./gradlew :viddik-processor:publishToMavenLocal   # Single module, e.g. after a processor-only change
 VIDDIK_RECORD_MODE=true ./gradlew :viddik-testing-core:jvmTest --tests "*runAllScreenshots*"
-                                                   # Re-record the self-test golden PNGs (src/jvmTest/snapshots/)
+                                                   # Re-record the self-test golden PNGs (src/jvmTest/snapshots/).
+                                                   # This rewrites EVERY golden, not the ones you changed —
+                                                   # always `git status` afterwards and revert the rest.
 ```
 
 CI: `.github/workflows/verify-goldens.yaml` runs `:viddik-testing-core:jvmTest` on every pull request
@@ -42,7 +48,7 @@ signal working, not a flake.
 
 Downstream consumers resolve `ru.workinprogress:viddik-*` via `mavenLocal()` — after any change here,
 `publishToMavenLocal` before rebuilding them. Versions are bumped by hand in
-`gradle.properties` (`viddik.version`, currently `0.2.0`); Gradle/consumers cache by exact version+build
+`gradle.properties` (`viddik.version`, currently `0.3.0`); Gradle/consumers cache by exact version+build
 hash so a republish under the same version is picked up by build cache invalidation, not by version
 diffing — if a consumer's build looks stale after a republish, `--no-build-cache` or bump the version.
 
@@ -459,8 +465,8 @@ snapshot.yaml`) still supplies them as plain environment variables prefixed `ORG
 (`ORG_GRADLE_PROJECT_REPOSILITE_USER` etc.), which Gradle auto-maps to project properties, so
 `findProperty("REPOSILITE_USER")` sees them without any extra wiring. The `VERSION` property, when
 present, overrides the version of every registered `MavenPublication` at publish time only (base
-version + build number, e.g. `0.2.0.482` — computed by the workflow's "Determine version" step) —
-`publishToMavenLocal` never sees it and always publishes plain `0.2.0`, so local dev doesn't pollute
+version + build number, e.g. `0.3.0.482` — computed by the workflow's "Determine version" step) —
+`publishToMavenLocal` never sees it and always publishes plain `0.3.0`, so local dev doesn't pollute
 `~/.m2` with one version per rebuild. `./gradlew publish` / `publishAllPublicationsToWipRepository`
 (root-level invocation runs it in every subproject that has it) pushes to `wip`; `publishToMavenLocal`
 is unaffected by any of this and always available with no credentials.
@@ -494,11 +500,11 @@ its README and CI. The coordinates below are what the plugin picks for itself, a
 need with `viddik { addDependencies = false }`:
 
 - **A KMP consumer module** (e.g. a `jvm("desktop")` target) depends on the base coordinates without a
-  target suffix (`ru.workinprogress:viddik-annotations:0.2.0`, `ru.workinprogress:viddik-testing-core:0.2.0`)
+  target suffix (`ru.workinprogress:viddik-annotations:0.3.0`, `ru.workinprogress:viddik-testing-core:0.3.0`)
   since a KMP-aware consumer resolves the right variant through Gradle module metadata regardless of the
   producer's/consumer's local target *name* matching. KSP processor dependency example:
-  `add("kspDesktopTest", "ru.workinprogress:viddik-processor:0.2.0")`.
+  `add("kspDesktopTest", "ru.workinprogress:viddik-processor:0.3.0")`.
 - **A plain `kotlin("jvm")` consumer module**, NOT KMP-aware, needs the explicit platform-suffixed
-  artifacts instead: `ru.workinprogress:viddik-annotations-desktop:0.2.0` (the `jvm("desktop")` target
-  publication) and `ru.workinprogress:viddik-testing-core-jvm:0.2.0` (the unnamed `jvm()` target
-  publication) plus `kspTest("ru.workinprogress:viddik-processor:0.2.0")`.
+  artifacts instead: `ru.workinprogress:viddik-annotations-desktop:0.3.0` (the `jvm("desktop")` target
+  publication) and `ru.workinprogress:viddik-testing-core-jvm:0.3.0` (the unnamed `jvm()` target
+  publication) plus `kspTest("ru.workinprogress:viddik-processor:0.3.0")`.

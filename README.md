@@ -92,8 +92,12 @@ Compose Multiplatform line rather than to a range of them — a mismatch shows u
 
 | viddik | Compose Multiplatform | Kotlin |
 |---|---|---|
+| 0.3.x | 1.12.x | 2.4.x |
 | 0.2.x | 1.12.x | 2.4.x |
 | 0.1.x | 1.11.x | 2.4.x |
+
+Reading metadata off `@Preview` needs 0.3.0 or newer, and the `@Preview` it reads is the one Compose
+Multiplatform 1.12 ships in `commonMain`.
 
 An Android consumer of `viddik-annotations` needs `compileSdk = 37` from 0.2.0 on — that is what
 Compose Multiplatform 1.12 requires of everything that depends on it.
