@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.dokka)
 }
 
-version = findProperty("viddik.version").toString()
 
 dependencies {
     dokka(projects.viddikAnnotations)

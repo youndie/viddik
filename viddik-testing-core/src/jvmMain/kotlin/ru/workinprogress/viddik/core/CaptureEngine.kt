@@ -33,7 +33,7 @@ import java.io.ByteArrayInputStream
 import javax.imageio.ImageIO
 
 @OptIn(ExperimentalTestApi::class)
-fun captureComposable(
+public fun captureComposable(
     width: Int = DEFAULT_WIDTH,
     height: Int = AUTO_HEIGHT,
     compositionLocals: List<ProvidedValue<*>> = emptyList(),
@@ -164,6 +164,6 @@ private fun renderSceneWithPerspective(
     return ImageIO.read(ByteArrayInputStream(encoded.bytes))
 }
 
-const val DEFAULT_WIDTH = 400
+public const val DEFAULT_WIDTH: Int = 400
 
 private const val MAX_AUTO_HEIGHT_CANVAS = 4000

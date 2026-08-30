@@ -103,13 +103,20 @@ public class ViddikPlugin : Plugin<Project> {
 
     private fun Project.detectModule(): ModuleShape =
         when {
-            plugins.hasPlugin(KMP_PLUGIN_ID) -> multiplatformShape()
-            plugins.hasPlugin(JVM_PLUGIN_ID) -> jvmShape()
-            else ->
+            plugins.hasPlugin(KMP_PLUGIN_ID) -> {
+                multiplatformShape()
+            }
+
+            plugins.hasPlugin(JVM_PLUGIN_ID) -> {
+                jvmShape()
+            }
+
+            else -> {
                 throw GradleException(
                     "The viddik plugin needs a Kotlin module to attach to: apply `kotlin(\"multiplatform\")` " +
                         "or `kotlin(\"jvm\")` in $displayName before `id(\"ru.workinprogress.viddik\")`.",
                 )
+            }
         }
 
     private fun Project.multiplatformShape(): ModuleShape {
@@ -119,26 +126,31 @@ public class ViddikPlugin : Plugin<Project> {
 
         val jvmTarget =
             when {
-                configured != null ->
+                configured != null -> {
                     jvmTargets.firstOrNull { it.name == configured }
                         ?: throw GradleException(
                             "viddik { jvmTarget = \"$configured\" } names a target $displayName doesn't have. " +
                                 "JVM targets here: ${jvmTargets.joinToString { it.name }.ifEmpty { "none" }}.",
                         )
+                }
 
-                jvmTargets.size == 1 -> jvmTargets.single()
+                jvmTargets.size == 1 -> {
+                    jvmTargets.single()
+                }
 
-                jvmTargets.isEmpty() ->
+                jvmTargets.isEmpty() -> {
                     throw GradleException(
                         "viddik renders through a real Compose Desktop window, so $displayName needs a JVM " +
                             "target — add `jvm(\"desktop\")` (or a plain `jvm()`) to its `kotlin { }` block.",
                     )
+                }
 
-                else ->
+                else -> {
                     throw GradleException(
                         "$displayName has more than one JVM target (${jvmTargets.joinToString { it.name }}); " +
                             "say which one carries the screenshot fixtures via `viddik { jvmTarget = \"...\" }`.",
                     )
+                }
             }
 
         val testCompilation = jvmTarget.compilations.getByName(TEST_COMPILATION)

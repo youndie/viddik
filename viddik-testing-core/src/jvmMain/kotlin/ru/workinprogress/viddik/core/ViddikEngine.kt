@@ -15,11 +15,11 @@ private const val MIN_MISMATCHED_PIXELS_PROPERTY = "viddik.minMismatchedPixels"
 private const val DEFAULT_SNAPSHOTS_DIR = "src/desktopTest/snapshots"
 private const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
 
-object ViddikEngine {
+public object ViddikEngine {
     private val recordMode: Boolean
         get() = System.getenv(RECORD_MODE_ENV)?.toBooleanStrictOrNull() == true
 
-    fun verify(
+    public fun verify(
         component: ViddikComponent,
         snapshotsDir: File = File(System.getProperty(SNAPSHOTS_DIR_PROPERTY) ?: DEFAULT_SNAPSHOTS_DIR),
         reportsDir: File = File(System.getProperty(REPORTS_DIR_PROPERTY) ?: DEFAULT_REPORTS_DIR),
@@ -61,7 +61,9 @@ object ViddikEngine {
             ImageIO.write(diff.diffImage, "png", diffFile)
             error(
                 "Screenshot mismatch for ${component.group}/${component.name}: " +
-                    "${diff.mismatchedPixels}/${diff.totalPixels} px differ (${"%.2f".format(diff.mismatchPercent)}%, " +
+                    "${diff.mismatchedPixels}/${diff.totalPixels} px differ (${"%.2f".format(
+                        diff.mismatchPercent,
+                    )}%, " +
                     "tolerance $tolerancePercent% or $minMismatchedPixels px). Diff saved to ${diffFile.path}",
             )
         }
@@ -79,7 +81,7 @@ object ViddikEngine {
      * A filter that matches nothing fails loudly rather than reporting an empty, green run — an
      * accidentally over-narrow filter would otherwise look exactly like a passing verification.
      */
-    fun dynamicTests(components: List<ViddikComponent>): List<DynamicTest> {
+    public fun dynamicTests(components: List<ViddikComponent>): List<DynamicTest> {
         val pattern = System.getProperty(FILTER_PROPERTY)?.takeIf { it.isNotBlank() }
         val selected =
             if (pattern == null) {

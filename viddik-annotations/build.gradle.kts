@@ -4,11 +4,10 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.dokka)
-    alias(libs.plugins.ktlint)
-    id("viddik.publishing")
+    alias(libs.plugins.sborkaKmp)
+    alias(libs.plugins.sborkaLint)
+    alias(libs.plugins.sborkaPublish)
 }
-
-group = "ru.workinprogress"
 
 kotlin {
     android {

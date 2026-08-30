@@ -1,5 +1,5 @@
 package ru.workinprogress.viddik.annotations
 
-interface ViddikPreviewLabel {
-    val previewLabel: String
+public interface ViddikPreviewLabel {
+    public val previewLabel: String
 }

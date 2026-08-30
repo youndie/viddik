@@ -63,4 +63,6 @@ class ViddikDensityTest {
 
 // Written out rather than imported so the test reads as "8 device-independent pixels", which is the
 // unit the assertion above is about.
-private fun Int.dp() = androidx.compose.ui.unit.Dp(toFloat())
+private fun Int.dp() =
+    androidx.compose.ui.unit
+        .Dp(toFloat())
