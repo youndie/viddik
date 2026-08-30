@@ -15,20 +15,17 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v5
 
-      - name: Setup Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: 21
+      # Java and Gradle in one step, at the version the whole portfolio uses.
+      - uses: youndie/sborka/.github/actions/setup-kotlin@main
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v5
-
+      # The head of the version from gradle.properties with the run number on the tail: two publishes
+      # in a row must not produce the same artifact, or a consumer cannot tell them apart and keeps
+      # the cached older one. The action reads plain `version`, which is where the head lives now —
+      # it was `viddik.version`, one more name for the same thing, and the same six lines of shell
+      # were copied into three repositories.
       - name: Determine version
         id: ver
-        run: |
-          VERSION=$(grep viddik.version gradle.properties | cut -d'=' -f2).${{ github.run_number }}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        uses: youndie/sborka/.github/actions/determine-version@main
 
       - name: Build
         run: ./gradlew build publishAllPublicationsToWipRepository dokkaGenerate --no-daemon

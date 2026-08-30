@@ -2,20 +2,17 @@ plugins {
     kotlin("jvm")
     `java-gradle-plugin`
     alias(libs.plugins.dokka)
-    alias(libs.plugins.ktlint)
-    id("viddik.publishing")
+    alias(libs.plugins.sborkaJvm)
+    alias(libs.plugins.sborkaLint)
+    alias(libs.plugins.sborkaPublish)
 }
 
-group = "ru.workinprogress"
-
-// Plugin-marker publications capture `project.version` when `java-gradle-plugin` creates them, so
-// the CI version override has to land on the project itself — patching the publications afterwards
-// (what `viddik.publishing` does for the plain library modules) would leave the marker pointing at
-// a version that was never published.
-findProperty("VERSION")?.toString()?.let { version = it }
+// The version used to be patched onto the project here by hand, because the old convention set it on
+// the publications instead and a plugin marker captures `project.version` when `java-gradle-plugin`
+// creates it — a marker pointing at a version that was never published. `sborka.base` sets the
+// project version for every module, so the special case is gone rather than moved.
 
 kotlin {
-    jvmToolchain(21)
     explicitApi()
 }
 

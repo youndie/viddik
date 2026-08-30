@@ -4,16 +4,13 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp)
     alias(libs.plugins.dokka)
-    alias(libs.plugins.ktlint)
-    id("viddik.publishing")
+    alias(libs.plugins.sborkaKmp)
+    alias(libs.plugins.sborkaLint)
+    alias(libs.plugins.sborkaPublish)
 }
-
-group = "ru.workinprogress"
 
 kotlin {
     jvm()
-
-    jvmToolchain(21)
 
     sourceSets {
         val jvmMain by getting {
@@ -50,16 +47,11 @@ kotlin.sourceSets.getByName("jvmTest") {
     kotlin.srcDir("build/generated/ksp/jvm/jvmTest/kotlin")
 }
 
-tasks
-    .matching {
-        it.name in
-            setOf(
-                "ktlintJvmTestSourceSetCheck",
-                "runKtlintCheckOverJvmTestSourceSet",
-                "ktlintJvmTestSourceSetFormat",
-                "runKtlintFormatOverJvmTestSourceSet",
-            )
-    }.configureEach { enabled = false }
+// The four ktlint tasks over `jvmTest` used to be disabled here: this source set contains the
+// KSP-generated registry, and a formatter rewriting generated code makes the generator's next run
+// look like a change. `sborka.lint` excludes `/build/generated/` from what ktlint sees, so the tasks
+// can run again — and the hand-written tests in this source set are checked instead of skipped along
+// with the generated file.
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()

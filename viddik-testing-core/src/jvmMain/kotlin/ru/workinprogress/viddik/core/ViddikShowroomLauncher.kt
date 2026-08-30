@@ -19,9 +19,9 @@ private const val REGISTRY_CLASS = "ru.workinprogress.viddik.generated.Generated
  * set, so this module can't see the class at compile time, only on the runtime classpath the
  * `viddikShowroom` Gradle task assembles.
  */
-object ViddikShowroomLauncher {
+public object ViddikShowroomLauncher {
     @JvmStatic
-    fun main(args: Array<String>) {
+    public fun main(args: Array<String>) {
         val components = loadComponents()
 
         application {

@@ -24,5 +24,6 @@ internal object ViddikPluginVersions {
     val junitJupiter: String get() = property("junit.jupiter.version")
     val junitPlatform: String get() = property("junit.platform.version")
 
-    private fun property(name: String): String = properties.getProperty(name) ?: error("$name is missing from $RESOURCE")
+    private fun property(name: String): String =
+        properties.getProperty(name) ?: error("$name is missing from $RESOURCE")
 }

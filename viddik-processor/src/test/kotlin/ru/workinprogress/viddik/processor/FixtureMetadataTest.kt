@@ -141,7 +141,9 @@ class FixtureMetadataTest {
     @Test
     fun `uiMode is read as a bit field not as a value`() {
         // A television preview in night mode is still night mode; a television preview is not.
-        assertTrue(checkNotNull(resolve(preview = PreviewArgs(uiMode = UI_MODE_NIGHT_YES or UI_MODE_TYPE_TELEVISION))).dark)
+        assertTrue(
+            checkNotNull(resolve(preview = PreviewArgs(uiMode = UI_MODE_NIGHT_YES or UI_MODE_TYPE_TELEVISION))).dark,
+        )
         assertEquals(false, checkNotNull(resolve(preview = PreviewArgs(uiMode = UI_MODE_TYPE_TELEVISION))).dark)
         assertEquals(false, checkNotNull(resolve(preview = PreviewArgs(uiMode = UI_MODE_NIGHT_NO))).dark)
     }

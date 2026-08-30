@@ -45,7 +45,8 @@ public abstract class ViddikScreenshotTask : Test() {
 internal class ViddikFilterArgumentProvider(
     @get:Input @get:Optional val component: Provider<String>,
 ) : CommandLineArgumentProvider {
-    override fun asArguments(): Iterable<String> = component.orNull?.let { listOf("-D$FILTER_PROPERTY=$it") } ?: emptyList()
+    override fun asArguments(): Iterable<String> =
+        component.orNull?.let { listOf("-D$FILTER_PROPERTY=$it") } ?: emptyList()
 
     private companion object {
         const val FILTER_PROPERTY = "viddik.filter"

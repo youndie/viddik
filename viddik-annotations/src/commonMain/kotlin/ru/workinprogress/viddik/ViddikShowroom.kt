@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
 import ru.workinprogress.viddik.annotations.ViddikComponent
 
 @Composable
-fun ViddikShowroom(
+public fun ViddikShowroom(
     components: List<ViddikComponent>,
     modifier: Modifier = Modifier,
 ) {

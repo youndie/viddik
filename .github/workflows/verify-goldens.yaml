@@ -25,14 +25,10 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v5
 
-      - name: Setup Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: 21
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v5
+      # Java and Gradle in one step. The action installs both 21 and 25: Gradle runs on the newer
+      # one while the toolchain compiles against `sborka.jvmToolchain`, and a missing toolchain is
+      # either a download nobody asked for or a failure naming a vendor.
+      - uses: youndie/sborka/.github/actions/setup-kotlin@main
 
       # gradlew (the shell script) is checked out with CRLF line endings on Windows, so run the .bat
       # there rather than forcing bash on it.

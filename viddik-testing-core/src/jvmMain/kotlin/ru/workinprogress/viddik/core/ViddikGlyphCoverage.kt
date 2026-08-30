@@ -22,10 +22,10 @@ package ru.workinprogress.viddik.core
 // which characters will be drawn by the host, so a fixture can fail with "nothing in the bundled font
 // draws U+2715" instead of a 0.1% pixel diff discovered on someone else's machine. The fix is then a
 // project decision: draw the icon as an icon, or bundle a font that covers the character.
-object ViddikGlyphCoverage {
+public object ViddikGlyphCoverage {
     // Codepoints in `text` that `fontBytes` (the bundled Roboto by default) cannot draw, ignoring
     // whitespace and control characters. Non-empty means: this text's rendering depends on the host.
-    fun missingGlyphs(
+    public fun missingGlyphs(
         text: String,
         fontBytes: ByteArray = robotoBytes,
     ): Set<Int> {
@@ -38,7 +38,7 @@ object ViddikGlyphCoverage {
             .toSet()
     }
 
-    fun codepointsOf(fontBytes: ByteArray): Set<Int> = cmapCodepoints(fontBytes)
+    public fun codepointsOf(fontBytes: ByteArray): Set<Int> = cmapCodepoints(fontBytes)
 }
 
 // Minimal cmap reader — formats 4 (BMP) and 12 (full range) are the only ones a modern TTF/OTF ships,

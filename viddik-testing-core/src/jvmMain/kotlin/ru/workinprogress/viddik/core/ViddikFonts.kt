@@ -33,7 +33,7 @@ internal val robotoBytes: ByteArray by lazy {
 // baseline differ per OS and every line after the first drifts by a pixel. Force all three sources to
 // hhea's values and set USE_TYPO_METRICS, so which table a backend prefers stops mattering. Applies to
 // any font a consumer brings, not just the bundled one.
-fun normalizeVerticalMetrics(font: ByteArray): ByteArray {
+public fun normalizeVerticalMetrics(font: ByteArray): ByteArray {
     val bytes = font.copyOf()
 
     fun u8(o: Int) = bytes[o].toInt() and 0xFF
@@ -60,7 +60,11 @@ fun normalizeVerticalMetrics(font: ByteArray): ByteArray {
         setU16(o + 2, (v and 0xFFFF).toInt())
     }
 
-    fun record(tag: String): Int = (0 until u16(4)).map { 12 + it * 16 }.first { String(bytes, it, 4, Charsets.ISO_8859_1) == tag }
+    fun record(tag: String): Int =
+        (0 until u16(4)).map { 12 + it * 16 }.first {
+            String(bytes, it, 4, Charsets.ISO_8859_1) ==
+                tag
+        }
 
     fun offset(tag: String) = u32(record(tag) + 8).toInt()
 
@@ -100,7 +104,7 @@ fun normalizeVerticalMetrics(font: ByteArray): ByteArray {
     return bytes
 }
 
-val ViddikFontFamily: FontFamily by lazy {
+public val ViddikFontFamily: FontFamily by lazy {
     FontFamily(
         Font("Roboto-Thin", robotoBytes, FontWeight.Thin),
         Font("Roboto-ExtraLight", robotoBytes, FontWeight.ExtraLight),
@@ -128,7 +132,7 @@ val ViddikFontFamily: FontFamily by lazy {
 //   AntiAlias + None hinting + normalized metrics + path rasterization: 0.000% on 6 of 8 fixtures
 //     (byte-identical PNGs), 3 px within channel tolerance on the 7th, font fallback on the 8th
 @OptIn(ExperimentalTextApi::class)
-val ViddikPlatformTextStyle: PlatformTextStyle by lazy {
+public val ViddikPlatformTextStyle: PlatformTextStyle by lazy {
     PlatformTextStyle(
         spanStyle = null,
         paragraphStyle =
@@ -152,7 +156,7 @@ val ViddikPlatformTextStyle: PlatformTextStyle by lazy {
 // it. A project that already ships its own font file should keep using it and run the bytes through
 // normalizeVerticalMetrics() instead — substituting Roboto into a golden of a UI that doesn't use
 // Roboto is worse than useless.
-fun viddikTypography(base: Typography = Typography()): Typography =
+public fun viddikTypography(base: Typography = Typography()): Typography =
     Typography(
         displayLarge = base.displayLarge.copy(fontFamily = ViddikFontFamily, platformStyle = ViddikPlatformTextStyle),
         displayMedium = base.displayMedium.copy(fontFamily = ViddikFontFamily, platformStyle = ViddikPlatformTextStyle),

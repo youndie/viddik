@@ -41,7 +41,7 @@ package ru.workinprogress.viddik.annotations
  */
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.SOURCE)
-annotation class ViddikScreenshot(
+public annotation class ViddikScreenshot(
     val name: String = "",
     val group: String = "",
     val width: Int = UNSPECIFIED,

@@ -10,6 +10,7 @@ import com.google.devtools.ksp.symbol.KSAnnotation
 import com.google.devtools.ksp.symbol.KSFile
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSType
+import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
@@ -70,7 +71,7 @@ private sealed class ViddikEntry {
     ) : ViddikEntry()
 }
 
-class ViddikSymbolProcessor(
+public class ViddikSymbolProcessor(
     private val codeGenerator: CodeGenerator,
     private val logger: KSPLogger,
     private val generateTests: Boolean = true,
@@ -278,7 +279,8 @@ class ViddikSymbolProcessor(
                         initializer.add(
                             "addAll(%T().values.mapIndexed·{·index,·param·->·\n" +
                                 "··val·label·=·((param·as?·%T)?.previewLabel·?:·param.toString()).take(60)\n" +
-                                "··%T(name·=·%S·+·\"·-·\"·+·label·+·\"·#\"·+·index·+·\"·Dark\",·group·=·%S,·width·=·%L,·" +
+                                "··%T(name·=·%S·+·\"·-·\"·+·label·+·\"·#\"·+·index·+·\"·Dark\",·" +
+                                "group·=·%S,·width·=·%L,·" +
                                 "height·=·%L,·fontScale·=·%Lf,·content·=·{·%T(%T·provides·true)·{·%L·} })\n" +
                                 "}.toList())\n",
                             providerClass,
@@ -301,7 +303,25 @@ class ViddikSymbolProcessor(
 
         FileSpec
             .builder(GENERATED_PACKAGE, "GeneratedViddikRegistry")
-            .addType(
+            // GENERATED CODE MUST NOT FAIL A CONSUMER'S -Werror BUILD.
+            //
+            // The label lookup is written defensively — `param as? ViddikPreviewLabel` and a
+            // `toString()` behind it — because a parameter provider may yield anything. When it
+            // yields a final type that does not implement the interface, and `String` is the common
+            // case, the compiler proves both dead and says so: "this cast can never succeed",
+            // "redundant call of conversion method". Correct warnings about code nobody wrote by
+            // hand and nobody can edit, and a module compiling with `allWarningsAsErrors` — which is
+            // what the shared conventions turn on — fails on them.
+            .addAnnotation(
+                AnnotationSpec
+                    .builder(Suppress::class)
+                    .addMember("%S", "CAST_NEVER_SUCCEEDS")
+                    .addMember("%S", "USELESS_CAST")
+                    .addMember("%S", "USELESS_ELVIS")
+                    .addMember("%S", "USELESS_CALL_ON_NOT_NULL")
+                    .addMember("%S", "REDUNDANT_CALL_OF_CONVERSION_METHOD")
+                    .build(),
+            ).addType(
                 TypeSpec
                     .objectBuilder("GeneratedViddikRegistry")
                     .addProperty(
@@ -364,11 +384,20 @@ private fun collectPreviews(
     if (depth > MAX_MULTIPREVIEW_DEPTH) return emptyList()
     return annotations.flatMap { annotation ->
         when (annotation.qualifiedName()) {
-            PREVIEW_FQN -> listOf(annotation.toPreviewArgs())
-            PREVIEW_CONTAINER_FQN -> annotation.containedPreviews().map { it.toPreviewArgs() }
+            PREVIEW_FQN -> {
+                listOf(annotation.toPreviewArgs())
+            }
+
+            PREVIEW_CONTAINER_FQN -> {
+                annotation.containedPreviews().map { it.toPreviewArgs() }
+            }
+
             // Not a preview itself; it may still be an annotation class that carries some.
-            in SKIPPED_ANNOTATIONS -> emptyList()
-            else ->
+            in SKIPPED_ANNOTATIONS -> {
+                emptyList()
+            }
+
+            else -> {
                 collectPreviews(
                     annotation.annotationType
                         .resolve()
@@ -376,6 +405,7 @@ private fun collectPreviews(
                         .toList(),
                     depth + 1,
                 )
+            }
         }
     }
 }
@@ -388,13 +418,21 @@ private fun collectWrappers(
     if (depth > MAX_MULTIPREVIEW_DEPTH) return emptyList()
     return annotations.flatMap { annotation ->
         when (annotation.qualifiedName()) {
-            PREVIEW_WRAPPER_FQN ->
+            PREVIEW_WRAPPER_FQN -> {
                 listOfNotNull(
                     (annotation.argument("wrapper") as? KSType)?.declaration?.qualifiedName?.asString(),
                 )
-            PREVIEW_FQN, PREVIEW_CONTAINER_FQN -> emptyList()
-            in SKIPPED_ANNOTATIONS -> emptyList()
-            else ->
+            }
+
+            PREVIEW_FQN, PREVIEW_CONTAINER_FQN -> {
+                emptyList()
+            }
+
+            in SKIPPED_ANNOTATIONS -> {
+                emptyList()
+            }
+
+            else -> {
                 collectWrappers(
                     annotation.annotationType
                         .resolve()
@@ -402,6 +440,7 @@ private fun collectWrappers(
                         .toList(),
                     depth + 1,
                 )
+            }
         }
     }
 }
