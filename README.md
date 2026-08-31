@@ -97,7 +97,8 @@ Compose Multiplatform line rather than to a range of them — a mismatch shows u
 | 0.1.x | 1.11.x | 2.4.x |
 
 Reading metadata off `@Preview` needs 0.3.0 or newer, and the `@Preview` it reads is the one Compose
-Multiplatform 1.12 ships in `commonMain`.
+Multiplatform 1.12 ships in `commonMain`. A per-fixture `tolerancePercent` needs 0.3.1 — processor and
+engine both, which the plugin keeps in step by default.
 
 An Android consumer of `viddik-annotations` needs `compileSdk = 37` from 0.2.0 on — that is what
 Compose Multiplatform 1.12 requires of everything that depends on it.
@@ -175,6 +176,9 @@ render headless at all.
 Precedence per field is: an argument on `@ViddikScreenshot`, then the `@Preview` field, then viddik's
 default — so existing fixtures that spell everything on `@ViddikScreenshot` keep behaving exactly as
 they did.
+
+`darkVariant` and `tolerancePercent` are viddik's own — `@Preview` has no counterpart for either, so
+those two are only ever read off `@ViddikScreenshot`.
 
 Note that `uiMode` and `darkVariant` mean different things: `uiMode` says *this* fixture is dark,
 `darkVariant = true` asks for a **second**, dark copy beside the light one. Setting both is an error
@@ -408,6 +412,50 @@ text renders differently per machine — draw the icon as an icon, or bundle a f
 character to a button label moves 1.32% of the pixels, so this is a strict check, not a loose one.
 Override per call via `tolerancePercent`, or globally via the `viddik.tolerancePercent` system
 property.
+
+#### One fixture that can't hold the strict number
+
+One rendering path is not portable, and it is a specific one: **text inside a layer that carries a
+`RenderEffect`** — `Modifier.blur`, `graphicsLayer(renderEffect = ...)`, or any glass/backdrop effect.
+Skia factors the perspective out of the canvas matrix before rasterizing such a layer's content
+(image filters cannot work in a perspective space), which switches off exactly the mechanism that
+makes glyphs platform-independent, so they go back to the host font backend. Measured macOS to Linux,
+at viddik's own defaults: text under `blur(2.dp)` mismatches 1.40% of pixels, the same text with no
+effect 0.00%, geometry under the same blur 0.00%.
+
+**The fix is `Modifier.viddikStableGlyphs()`**, which puts the term back inside the layer. Same
+measurement with it applied: 0.00%.
+
+```kotlin
+Box(Modifier.blur(8.dp).viddikStableGlyphs()) { Text("under glass") }
+Box(Modifier.layerBackdrop(backdrop).viddikStableGlyphs()) { Text("under glass") }
+```
+
+It goes on the content being blurred, *inside* the effect rather than around it — around it is where
+the capture root's own term already is, and where Skia already discards it. That means it lives in
+whatever composable draws the glass, production code included, which is why it ships in
+`viddik-annotations` (safe to depend on from `main`) and does nothing at all unless a viddik capture
+is what is drawing: outside one it is a single composition-local read and returns the receiver
+untouched. `CaptureEngine` can't apply it for you — Compose exposes no hook into how a layer draws
+(`GraphicsLayer` is final, `SkiaBackedCanvas` internal), see CLAUDE.md for that measurement too.
+
+Where that placement isn't possible — a third-party glass component you don't control — raising the
+global threshold to cover one such fixture would un-check every other one, so a fixture can carry its
+own budget instead:
+
+```kotlin
+@ViddikScreenshot(name = "Segmented - three ways", group = "Glass", tolerancePercent = 6.0)
+```
+
+It overrides both the default and `viddik.tolerancePercent` for that fixture alone, and applies to
+every entry the fixture expands to (`darkVariant`, `@PreviewParameter` values, a multipreview). The
+failure message says when the threshold that let something through was the fixture's own.
+
+Two things it is not for. It isn't a way to quiet a fixture that has started failing — that is a
+regression until measured otherwise, and the number written here should be one you measured on the
+platforms you actually verify on. And it isn't a per-fixture off switch: anything outside 0–100 is a
+build error, and 100 itself compiles with a warning, because a fixture that cannot fail is a green
+check that checks nothing.
 
 ### 🗂️ Groups & registry
 
