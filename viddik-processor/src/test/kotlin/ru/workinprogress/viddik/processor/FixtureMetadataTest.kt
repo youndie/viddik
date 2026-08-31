@@ -14,7 +14,14 @@ private const val PREVIEW_LIGHT_DARK_NIGHT = 33
 
 /** The arguments KSP hands over for a bare `@ViddikScreenshot` — every default substituted. */
 private val bareScreenshot =
-    ScreenshotArgs(name = "", group = "", width = UNSPECIFIED, height = UNSPECIFIED, darkVariant = false)
+    ScreenshotArgs(
+        name = "",
+        group = "",
+        width = UNSPECIFIED,
+        height = UNSPECIFIED,
+        darkVariant = false,
+        tolerancePercent = UNSPECIFIED_TOLERANCE,
+    )
 
 private fun resolveAll(
     functionName: String = "SampleFixture",
@@ -231,6 +238,80 @@ class FixtureMetadataTest {
     fun `fontScale is carried through`() {
         assertEquals(1.5f, checkNotNull(resolve(preview = PreviewArgs(fontScale = 1.5f))).fontScale)
         assertEquals(1f, checkNotNull(resolve()).fontScale, "no @Preview means no scaling")
+    }
+
+    // --- per-fixture tolerance ------------------------------------------------------------------
+
+    @Test
+    fun `a tolerance given by hand is carried through`() {
+        assertEquals(
+            6.0,
+            checkNotNull(resolve(screenshot = bareScreenshot.copy(tolerancePercent = 6.0))).tolerancePercent,
+        )
+    }
+
+    @Test
+    fun `an omitted tolerance stays unstated rather than becoming the sentinel`() {
+        // null is what tells the engine to use the run's own threshold; -1.0 reaching a component would
+        // be a fixture nothing can ever match.
+        assertNull(checkNotNull(resolve()).tolerancePercent)
+    }
+
+    @Test
+    fun `Preview cannot supply a tolerance`() {
+        // There is no @Preview field for it, so the only source is @ViddikScreenshot.
+        assertNull(checkNotNull(resolve(preview = PreviewArgs(name = "Primary", widthDp = 320))).tolerancePercent)
+    }
+
+    @Test
+    fun `a tolerance outside 0-100 is refused rather than clamped`() {
+        listOf(-5.0, 150.0).forEach { bad ->
+            val screenshot = bareScreenshot.copy(tolerancePercent = bad)
+            assertEquals(emptyList(), resolveAll(screenshot = screenshot), "$bad should produce no fixture")
+            val message = checkNotNull(errorFrom(screenshot = screenshot))
+            assertTrue("tolerancePercent" in message, "the message should name the argument: $message")
+        }
+    }
+
+    @Test
+    fun `a tolerance of 100 is allowed but warned about`() {
+        val warnings = mutableListOf<String>()
+        val fixtures =
+            resolveFixtures(
+                "SampleFixture",
+                bareScreenshot.copy(tolerancePercent = 100.0),
+                emptyList(),
+                onError = { },
+                onWarn = { warnings += it },
+            )
+
+        assertEquals(100.0, fixtures.single().tolerancePercent)
+        assertTrue(warnings.isNotEmpty(), "a fixture that can no longer fail should say so")
+    }
+
+    @Test
+    fun `one tolerance covers every fixture a multipreview produces`() {
+        val fixtures =
+            resolveAll(
+                screenshot = bareScreenshot.copy(tolerancePercent = 6.0),
+                previews = listOf(PreviewArgs(name = "Light"), PreviewArgs(name = "Dark")),
+            )
+
+        assertEquals(listOf(6.0, 6.0), fixtures.map { it.tolerancePercent })
+    }
+
+    @Test
+    fun `a bad tolerance is reported once, not once per preview`() {
+        var errors = 0
+        resolveFixtures(
+            "SampleFixture",
+            bareScreenshot.copy(tolerancePercent = 150.0),
+            List(4) { PreviewArgs(name = "#$it") },
+            onError = { errors++ },
+            onWarn = { },
+        )
+
+        assertEquals(1, errors)
     }
 
     // --- device specs -------------------------------------------------------------------------

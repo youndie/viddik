@@ -23,8 +23,13 @@ public object ViddikEngine {
         component: ViddikComponent,
         snapshotsDir: File = File(System.getProperty(SNAPSHOTS_DIR_PROPERTY) ?: DEFAULT_SNAPSHOTS_DIR),
         reportsDir: File = File(System.getProperty(REPORTS_DIR_PROPERTY) ?: DEFAULT_REPORTS_DIR),
+        // A fixture that states its own budget wins over the run's, which is the entire point of
+        // stating it: the global number is what the suite as a whole can hold, and a fixture only names
+        // its own when it provably can't hold that. An explicit argument here still beats both.
         tolerancePercent: Double =
-            System.getProperty(TOLERANCE_PERCENT_PROPERTY)?.toDoubleOrNull() ?: DEFAULT_TOLERANCE_PERCENT,
+            component.tolerancePercent
+                ?: System.getProperty(TOLERANCE_PERCENT_PROPERTY)?.toDoubleOrNull()
+                ?: DEFAULT_TOLERANCE_PERCENT,
         channelTolerance: Int =
             System.getProperty(CHANNEL_TOLERANCE_PROPERTY)?.toIntOrNull() ?: DEFAULT_CHANNEL_TOLERANCE,
         minMismatchedPixels: Int =
@@ -59,12 +64,17 @@ public object ViddikEngine {
             reportsDir.mkdirs()
             val diffFile = File(reportsDir, fileName.removeSuffix(".png") + "_DIFF.png")
             ImageIO.write(diff.diffImage, "png", diffFile)
+            // Naming where the tolerance came from matters once a fixture can carry its own: otherwise a
+            // failure reads as "the suite's threshold" when it was really this fixture's own number.
+            val toleranceOrigin =
+                if (component.tolerancePercent == tolerancePercent) " from @ViddikScreenshot" else ""
             error(
                 "Screenshot mismatch for ${component.group}/${component.name}: " +
                     "${diff.mismatchedPixels}/${diff.totalPixels} px differ (${"%.2f".format(
                         diff.mismatchPercent,
                     )}%, " +
-                    "tolerance $tolerancePercent% or $minMismatchedPixels px). Diff saved to ${diffFile.path}",
+                    "tolerance $tolerancePercent%$toleranceOrigin or $minMismatchedPixels px). " +
+                    "Diff saved to ${diffFile.path}",
             )
         }
     }

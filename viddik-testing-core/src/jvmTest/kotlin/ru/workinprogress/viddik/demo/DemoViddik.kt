@@ -54,7 +54,13 @@ fun SampleTextPreview() {
     }
 }
 
-@ViddikScreenshot(name = "Simple Button", group = "Demo")
+// tolerancePercent is on these two fixtures so the per-fixture budget is exercised by this repo's own
+// suite — static codegen here, the parameterized (and dark) codegen below. 0.2% is four times the
+// suite's default and still six times under the smallest realistic regression (one character in a
+// button label moves 1.32% of the pixels), and neither golden actually needs it: both match
+// byte-for-byte across the three CI runners. A fixture that genuinely needs a loose budget states a
+// number like the 6.0 a text-under-glass fixture needs, and says in a comment why.
+@ViddikScreenshot(name = "Simple Button", group = "Demo", tolerancePercent = 0.2)
 @Composable
 fun SampleButtonPreview() {
     DemoTheme {
@@ -84,7 +90,7 @@ class DemoButtonLabelProvider : PreviewParameterProvider<String> {
     override val values = sequenceOf("First", "Second", "Third")
 }
 
-@ViddikScreenshot(name = "Parameterized button", group = "Demo", darkVariant = true)
+@ViddikScreenshot(name = "Parameterized button", group = "Demo", darkVariant = true, tolerancePercent = 0.2)
 @Composable
 fun ParameterizedButtonPreview(
     @PreviewParameter(DemoButtonLabelProvider::class) label: String,
