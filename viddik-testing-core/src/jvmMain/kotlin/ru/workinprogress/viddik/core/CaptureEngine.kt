@@ -83,7 +83,14 @@ public fun captureComposable(
             val rendered = renderSceneWithPerspective(scene, width, canvasHeight)
 
             val roots = onAllNodes(isRoot()).fetchSemanticsNodes()
-            if (roots.size <= 1) {
+            // A second root means a Dialog or a Popup. Only a dialog is worth cropping to: it is a
+            // window of its own and the scene around it is empty scrim. A popup — a dropdown menu, a
+            // tooltip — is positioned inside the window and belongs in the image together with what it
+            // is anchored to, so the whole scene is the capture. Asking for a dialog node
+            // unconditionally is what this used to do, and it failed every popup fixture outright with
+            // a message about dialogs (found by the Canary/Popup fixture).
+            val dialogNodes = onAllNodes(isDialog()).fetchSemanticsNodes()
+            if (roots.size <= 1 || dialogNodes.isEmpty()) {
                 captured = rendered
             } else {
                 // The dialog is drawn on top of the scene — crop it out by its semantics bounds.
