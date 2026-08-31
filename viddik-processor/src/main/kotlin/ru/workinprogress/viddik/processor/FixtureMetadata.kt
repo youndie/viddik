@@ -12,6 +12,7 @@ internal data class ScreenshotArgs(
     val width: Int? = null,
     val height: Int? = null,
     val darkVariant: Boolean = false,
+    val tolerancePercent: Double? = null,
 )
 
 /** The fields of `androidx.compose.ui.tooling.preview.Preview` that mean something to viddik. */
@@ -35,6 +36,8 @@ internal data class FixtureMetadata(
     /** A *second*, dark entry is wanted next to the light one — `@ViddikScreenshot(darkVariant = true)`. */
     val darkVariant: Boolean,
     val fontScale: Float = 1f,
+    /** This fixture's own diff budget, or null to be judged by whatever the run is set to. */
+    val tolerancePercent: Double? = null,
 )
 
 /**
@@ -47,11 +50,32 @@ internal data class FixtureMetadata(
  */
 internal fun resolveFixtures(
     functionName: String,
-    screenshot: ScreenshotArgs,
+    rawScreenshot: ScreenshotArgs,
     previews: List<PreviewArgs>,
     onError: (String) -> Unit,
     onWarn: (String) -> Unit = {},
 ): List<FixtureMetadata> {
+    // Validated once here rather than per preview: the tolerance is written on @ViddikScreenshot, so a
+    // multipreview would otherwise report the same complaint once per fixture it produces.
+    val tolerance = rawScreenshot.tolerancePercent?.takeIf { it != UNSPECIFIED_TOLERANCE }
+    if (tolerance != null) {
+        if (tolerance < 0.0 || tolerance > MAX_TOLERANCE_PERCENT) {
+            onError(
+                "tolerancePercent = $tolerance is not a share of pixels. It has to be between 0 and " +
+                    "$MAX_TOLERANCE_PERCENT, and is a percentage: 6.0 means 6%, not 600%.",
+            )
+            return emptyList()
+        }
+        if (tolerance == MAX_TOLERANCE_PERCENT) {
+            onWarn(
+                "tolerancePercent = $MAX_TOLERANCE_PERCENT lets every pixel differ, so this fixture can " +
+                    "no longer fail. Delete it or record it, rather than keeping a green check that " +
+                    "checks nothing.",
+            )
+        }
+    }
+    val screenshot = rawScreenshot.copy(tolerancePercent = tolerance)
+
     if (previews.isEmpty()) {
         return listOfNotNull(resolveOne(functionName, screenshot, preview = null, onError = onError, onWarn = onWarn))
     }
@@ -128,6 +152,8 @@ private fun resolveOne(
         dark = dark,
         darkVariant = screenshot.darkVariant,
         fontScale = preview?.fontScale ?: 1f,
+        // Already normalized and validated by resolveFixtures; @Preview has no counterpart to fall back to.
+        tolerancePercent = screenshot.tolerancePercent,
     )
 }
 
@@ -204,6 +230,10 @@ internal const val PREVIEW_UNSET_DP = -1
 // Kept in step with ru.workinprogress.viddik.annotations, which this module deliberately does not
 // depend on: the processor runs on the build's own classpath, not the consumer's.
 internal const val UNSPECIFIED = Int.MIN_VALUE
+internal const val UNSPECIFIED_TOLERANCE = -1.0
 internal const val AUTO_HEIGHT = -1
 internal const val DEFAULT_WIDTH = 400
 internal const val DEFAULT_GROUP = "Default"
+
+/** A tolerance is a share of pixels, so 100 is every pixel on the canvas and there is nothing above it. */
+internal const val MAX_TOLERANCE_PERCENT = 100.0

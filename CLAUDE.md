@@ -48,7 +48,7 @@ signal working, not a flake.
 
 Downstream consumers resolve `ru.workinprogress:viddik-*` via `mavenLocal()` — after any change here,
 `publishToMavenLocal` before rebuilding them. Versions are bumped by hand in
-`gradle.properties` (`viddik.version`, currently `0.3.0`); Gradle/consumers cache by exact version+build
+`gradle.properties` (`viddik.version`, currently `0.3.1`); Gradle/consumers cache by exact version+build
 hash so a republish under the same version is picked up by build cache invalidation, not by version
 diffing — if a consumer's build looks stale after a republish, `--no-build-cache` or bump the version.
 
@@ -62,12 +62,14 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
 - **viddik-annotations** — Kotlin Multiplatform (`android()` + `jvm("desktop")`), Compose Multiplatform
   UI only (LazyColumn/Text/clickable — no platform APIs), so adding targets here is unconstrained.
   - `ViddikScreenshot` (`annotations/ViddikScreenshot.kt`) — the marker annotation (`name`, `group`,
-    `width`, `height`, `darkVariant`). Every size parameter defaults to `UNSPECIFIED`
+    `width`, `height`, `darkVariant`, `tolerancePercent`). Every size parameter defaults to `UNSPECIFIED`
     (`Int.MIN_VALUE`, in `ViddikComponent.kt`) rather than to its old literal, because KSP substitutes
     defaults before the processor sees them: without a value nobody would write by hand, "omitted" and
     "written out as 400" are indistinguishable, and falling back to `@Preview` would override a
     deliberate 400. Resolution order per field is argument here → `@Preview` field → viddik default
-    (400 / `AUTO_HEIGHT` / `"Default"` / the function's own name).
+    (400 / `AUTO_HEIGHT` / `"Default"` / the function's own name). `tolerancePercent` has the same
+    shape for the same reason (`UNSPECIFIED_TOLERANCE = -1.0`, a share of pixels nobody writes) but no
+    `@Preview` field to fall back to — like `darkVariant`, it is viddik's own.
   - `ViddikComponent` (`annotations/ViddikComponent.kt`) — runtime data class the processor emits into
     the generated registry (`name`, `group`, `width`, `height`, `content: @Composable () -> Unit`).
     `AUTO_HEIGHT = -1` lives here too.
@@ -79,6 +81,12 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     click navigates to a full-screen detail view with a `← group/name` back row. Used both as the
     interactive desktop browser (`ViddikShowroom(GeneratedViddikRegistry.components)` in a
     `JavaExec`-launched window) and self-tested as an ordinary screenshot in `DemoViddik.kt`.
+  - `ViddikStableGlyphs.kt` — `LocalViddikCapture` (`compositionLocalOf { false }`, provided as `true`
+    only by `CaptureEngine`) and `Modifier.viddikStableGlyphs()`, the one thing a consumer has to
+    write by hand for text under a blur/glass layer to be portable. `internal expect fun
+    Modifier.glyphPerspectiveNudge()` has the platform halves: the desktop actual concats the 1e-9
+    term onto the drawing canvas, the Android one returns the receiver. See "The hole: text inside a
+    filtered layer".
   - `LocalViddikDarkTheme` (`ViddikTheme.kt`) — `compositionLocalOf { false }`. There's no real "system
     dark mode" on a JVM/desktop test harness, so `darkVariant = true` fixtures must read this local
     themselves and branch their own `MaterialTheme` (see `DemoViddik.kt`'s `SampleTextPreview`) — the
@@ -203,6 +211,26 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     slack, originally for lossless-codec decode differences between platform Skia builds, also covers
     the last few glyph-outline quantization pixels). It was 0.5 while cross-platform text rendering
     was unfixed — see "Cross-platform golden portability" for why it no longer needs to be.
+  - **Per-fixture tolerance** (0.3.1). `ViddikComponent.tolerancePercent: Double?` carries what
+    `@ViddikScreenshot(tolerancePercent = ...)` asked for, and `ViddikEngine.verify` resolves
+    component → `viddik.tolerancePercent` system property → `DEFAULT_TOLERANCE_PERCENT` in its own
+    default argument, so an explicit call argument still wins over all three. It exists for the one
+    rendering path that is not portable and cannot currently be fixed from the capture root — text
+    inside a layer carrying a `RenderEffect`; see "The hole: text inside a filtered layer" below for
+    the measured mechanism and the fix that does work. The alternative was raising the
+    module-wide threshold, which un-checks every other fixture to cover one. Nullable rather than
+    defaulted to the engine's number: a component carrying a copy of today's default would pin the
+    fixture to it. The processor emits the argument **only when stated** — always emitting
+    `tolerancePercent = null` would break every fixture in a module built against pre-0.3.1
+    annotations, not just the ones using the feature — validates the range once per function rather
+    than once per preview (a multipreview would otherwise repeat the complaint), refuses anything
+    outside 0-100, and warns at exactly 100, which is a fixture that can no longer fail. Covered end
+    to end: `FixtureMetadataTest` (resolution), `GeneratedToleranceTest` (that the processor actually
+    *emits* it — the only test that reads `GeneratedViddikRegistry` back), `ViddikToleranceTest`
+    (precedence, through `verify` against a deliberately unmatchable golden; disabled under
+    `VIDDIK_RECORD_MODE`, which turns every verify into a write). Two demo fixtures carry
+    `tolerancePercent = 0.2` purely so the codegen path is live in this repo's own suite — their
+    goldens do not need it.
   - `ViddikEngine` — the record/verify harness (Paparazzi-equivalent). `VIDDIK_RECORD_MODE` env var
     (not a Gradle property — set it in the shell/CI step) toggles write-golden vs compare-and-fail.
     `viddik.snapshotsDir`/`viddik.reportsDir` **system properties** (not env vars) override the
@@ -420,6 +448,70 @@ Moving the term to the scene's canvas — the engine renders the scene itself in
 a fixture drawing a character its font lacks, or a component building `TextStyle(...)` from scratch
 (no `fontFamily`, so `FontFamily.Default` resolves to a host font).
 
+### The hole: text inside a filtered layer
+
+Portability is solved for everything the scene canvas can reach, and there is exactly one place it
+cannot reach: the content of a `saveLayer` that carries an image filter — `Modifier.blur`,
+`graphicsLayer(renderEffect = ...)`, `drawBackdrop`, any glass effect. Measured 31.08.2026, three
+independent probes, all reproducible from `viddik-testing-core`'s jvmTest:
+
+1. **Skia alone, no Compose.** Draw one string; measure how much the rendering changes when the 1e-9
+   term is added. No layer: 100 002 units of change (the mask-to-path switch). Inside a
+   `saveLayer` with a blur filter, term on the outer canvas: **0** — Skia factors the perspective out
+   of the CTM before rasterizing the layer's content, because image filters cannot work in a
+   perspective space. Concatenated *inside* the layer instead: 51 279 (σ=8) / 99 999 (σ=0.01). So the
+   mechanism viddik relies on is switched off precisely there, and glyphs go back to the host font
+   backend.
+2. **Through Compose, same answer.** Any `BlurEffect` — even σ=0.01, which smears nothing — zeroes the
+   term's effect; `OffsetEffect(0, 0)`, an alpha layer, and a recorded `GraphicsLayer` with no effect
+   all keep it (~109 000). It is not specific to `drawBackdrop`: plain `Modifier.blur` over text
+   breaks identically. The bug report's own "blur is fine" fixtures only looked fine because they had
+   no text in them.
+3. **Cross-OS ground truth**, macOS/arm64 recorded, Linux/x86_64 verified, at viddik's own defaults
+   (0.05%, ±2):
+
+   | fixture | mismatch | verdict |
+   |---|---|---|
+   | text, no effect | 0.00% | pass |
+   | text under `blur(2.dp)` | 1.40% | **fail** |
+   | 28sp text under `blur(2.dp)` | 2.81% | **fail** |
+   | text under `blur(8.dp)` | 0.05% | passes, but 7.68% of pixels differ within the ±2 channel slack |
+   | any of the above with the term applied inside the layer | **0.00%** | pass |
+   | geometry under `blur(8.dp)` | 0.00% | pass |
+
+   Blur strength decides the amplitude, not whether the bug is there: a wide blur spreads the same
+   difference until it hides under the channel tolerance. That is why one consumer's glass fixtures
+   fail on one OS and pass on another with no pattern.
+
+**The fix that works**, shipped as `Modifier.viddikStableGlyphs()` (`viddik-annotations`,
+`ViddikStableGlyphs.kt` + a desktop/android actual): concatenate the term inside the filtered layer,
+via a `drawWithContent` that saves the canvas, concats, draws the content and restores. Measured
+above, cross-OS difference goes to exactly 0.
+
+Placement is what makes it awkward, and why it is a modifier rather than something `CaptureEngine`
+does: it has to sit *inside* the blurred subtree, and Compose exposes no hook to inject it there —
+`GraphicsLayer` is final, `SkiaBackedCanvas` is internal, and `nativeCanvas` requires that exact type,
+so a delegating Compose `Canvas` cannot intercept `saveLayer` either. It therefore has to be written
+where the glass is, which is usually production code — hence `viddik-annotations` (the module safe to
+depend on from `main`) and hence the `LocalViddikCapture` gate: `CaptureEngine` provides `true`,
+everything else leaves it `false` and the modifier returns the receiver untouched, so a component can
+carry it without carrying it into production rendering. The local is provided *before* the caller's
+own `compositionLocals`, so a caller can override it back to false — which is how
+`ViddikStableGlyphsTest` pins the no-op half.
+
+`ViddikStableGlyphsTest` (jvmTest) is the regression guard, and it needs only one OS: applying the
+modifier inside a blurred layer must change the rendering by ~10^5 units (a mask-to-path switch moves
+that much; the term's own geometric effect is a few hundred at most), and must change nothing at all
+with `LocalViddikCapture` false. It is a proxy for portability, not portability itself — the two-OS
+run above is the real claim, and the test says so in its own failure message.
+
+Cost, measured at 800x600: the scene term is free (32 ms with and without); a `blur(24.dp)` roughly
+doubles a capture (32 -> 56 ms); the inner term inside a blurred layer adds another ~1.7x on Linux
+(56 -> 95 ms) and nothing on macOS. So a slow glass recording is the blur, not the determinism trick.
+
+Dead end, measured: `SurfaceProps(isDeviceIndependentFonts = true)` on the capture surface changes
+nothing at all, inside a filtered layer or outside it.
+
 A minimal Docker image (e.g. `eclipse-temurin:21-jdk`) needs `libgl1`/`libx11-6`/`libxext6`/
 `libxrender1` installed or skiko's native lib won't load at all (`UnsatisfiedLinkError` at
 `LibraryLoader.kt`) — Skiko links against libGL even for pure raster rendering. That container is how
@@ -465,8 +557,8 @@ snapshot.yaml`) still supplies them as plain environment variables prefixed `ORG
 (`ORG_GRADLE_PROJECT_REPOSILITE_USER` etc.), which Gradle auto-maps to project properties, so
 `findProperty("REPOSILITE_USER")` sees them without any extra wiring. The `VERSION` property, when
 present, overrides the version of every registered `MavenPublication` at publish time only (base
-version + build number, e.g. `0.3.0.482` — computed by the workflow's "Determine version" step) —
-`publishToMavenLocal` never sees it and always publishes plain `0.3.0`, so local dev doesn't pollute
+version + build number, e.g. `0.3.1.482` — computed by the workflow's "Determine version" step) —
+`publishToMavenLocal` never sees it and always publishes plain `0.3.1`, so local dev doesn't pollute
 `~/.m2` with one version per rebuild. `./gradlew publish` / `publishAllPublicationsToWipRepository`
 (root-level invocation runs it in every subproject that has it) pushes to `wip`; `publishToMavenLocal`
 is unaffected by any of this and always available with no credentials.
@@ -500,11 +592,11 @@ its README and CI. The coordinates below are what the plugin picks for itself, a
 need with `viddik { addDependencies = false }`:
 
 - **A KMP consumer module** (e.g. a `jvm("desktop")` target) depends on the base coordinates without a
-  target suffix (`ru.workinprogress:viddik-annotations:0.3.0`, `ru.workinprogress:viddik-testing-core:0.3.0`)
+  target suffix (`ru.workinprogress:viddik-annotations:0.3.1`, `ru.workinprogress:viddik-testing-core:0.3.1`)
   since a KMP-aware consumer resolves the right variant through Gradle module metadata regardless of the
   producer's/consumer's local target *name* matching. KSP processor dependency example:
-  `add("kspDesktopTest", "ru.workinprogress:viddik-processor:0.3.0")`.
+  `add("kspDesktopTest", "ru.workinprogress:viddik-processor:0.3.1")`.
 - **A plain `kotlin("jvm")` consumer module**, NOT KMP-aware, needs the explicit platform-suffixed
-  artifacts instead: `ru.workinprogress:viddik-annotations-desktop:0.3.0` (the `jvm("desktop")` target
-  publication) and `ru.workinprogress:viddik-testing-core-jvm:0.3.0` (the unnamed `jvm()` target
-  publication) plus `kspTest("ru.workinprogress:viddik-processor:0.3.0")`.
+  artifacts instead: `ru.workinprogress:viddik-annotations-desktop:0.3.1` (the `jvm("desktop")` target
+  publication) and `ru.workinprogress:viddik-testing-core-jvm:0.3.1` (the unnamed `jvm()` target
+  publication) plus `kspTest("ru.workinprogress:viddik-processor:0.3.1")`.

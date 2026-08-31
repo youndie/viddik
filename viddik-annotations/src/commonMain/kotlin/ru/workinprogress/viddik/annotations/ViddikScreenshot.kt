@@ -38,6 +38,12 @@ package ru.workinprogress.viddik.annotations
  * @param darkVariant emit a *second*, dark entry alongside the light one. Distinct from
  *   `@Preview(uiMode = UI_MODE_NIGHT_YES)`, which says this one fixture is dark rather than asking
  *   for another one; setting both is an error.
+ * @param tolerancePercent share of pixels this fixture alone may differ by, overriding the run's own
+ *   setting (`viddik.tolerancePercent`, otherwise 0.05%). Unset by default, and meant for the fixture
+ *   that provably can't hold the strict number — a known-unportable rendering path, not a fixture
+ *   that has started failing. The engine's 16-pixel floor still applies underneath, so this loosens a
+ *   fixture rather than tightening it below a handful of pixels. `@Preview` has no counterpart, so
+ *   this one is only ever read here.
  */
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.SOURCE)
@@ -47,4 +53,5 @@ public annotation class ViddikScreenshot(
     val width: Int = UNSPECIFIED,
     val height: Int = UNSPECIFIED,
     val darkVariant: Boolean = false,
+    val tolerancePercent: Double = UNSPECIFIED_TOLERANCE,
 )

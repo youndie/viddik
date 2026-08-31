@@ -54,6 +54,7 @@ private sealed class ViddikEntry {
         val qualifiedFunctionName: String,
         val forceDark: Boolean = false,
         val fontScale: Float = 1f,
+        val tolerancePercent: Double? = null,
         val wrapperQualifiedName: String? = null,
     ) : ViddikEntry()
 
@@ -67,6 +68,7 @@ private sealed class ViddikEntry {
         val darkVariant: Boolean,
         val forceDark: Boolean = false,
         val fontScale: Float = 1f,
+        val tolerancePercent: Double? = null,
         val wrapperQualifiedName: String? = null,
     ) : ViddikEntry()
 }
@@ -164,6 +166,7 @@ public class ViddikSymbolProcessor(
                     width = annotation.argument("width") as? Int,
                     height = annotation.argument("height") as? Int,
                     darkVariant = annotation.argument("darkVariant") as? Boolean == true,
+                    tolerancePercent = annotation.argument("tolerancePercent") as? Double,
                 )
 
             val previewArgs = collectPreviews(symbol.annotations.toList(), depth = 0)
@@ -181,7 +184,7 @@ public class ViddikSymbolProcessor(
             val fixtures =
                 resolveFixtures(
                     functionName = symbol.simpleName.asString(),
-                    screenshot = screenshotArgs,
+                    rawScreenshot = screenshotArgs,
                     previews = previewArgs,
                     onError = { message -> logger.error("${symbol.qualifiedName?.asString()}: $message", symbol) },
                     onWarn = { message -> logger.warn("${symbol.qualifiedName?.asString()}: $message", symbol) },
@@ -229,13 +232,14 @@ public class ViddikSymbolProcessor(
                             CodeBlock.of("{ %L }", call)
                         }
                     initializer.add(
-                        "add(%T(name = %S, group = %S, width = %L, height = %L, fontScale = %Lf, content = %L))\n",
+                        "add(%T(name = %S, group = %S, width = %L, height = %L, fontScale = %Lf, %Lcontent = %L))\n",
                         componentClass,
                         entry.name,
                         entry.group,
                         entry.width,
                         entry.height,
                         entry.fontScale,
+                        toleranceArgument(entry.tolerancePercent),
                         contentLambda,
                     )
                 }
@@ -263,7 +267,7 @@ public class ViddikSymbolProcessor(
                         "addAll(%T().values.mapIndexed·{·index,·param·->·\n" +
                             "··val·label·=·((param·as?·%T)?.previewLabel·?:·param.toString()).take(60)\n" +
                             "··%T(name·=·%S·+·\"·-·\"·+·label·+·\"·#\"·+·index,·group·=·%S,·width·=·%L,·height·=·%L,·" +
-                            "fontScale·=·%Lf,·content·=·%L)\n" +
+                            "fontScale·=·%Lf,·%Lcontent·=·%L)\n" +
                             "}.toList())\n",
                         providerClass,
                         previewLabelClass,
@@ -273,6 +277,7 @@ public class ViddikSymbolProcessor(
                         entry.width,
                         entry.height,
                         entry.fontScale,
+                        toleranceArgument(entry.tolerancePercent),
                         baseContent,
                     )
                     if (entry.darkVariant) {
@@ -280,8 +285,8 @@ public class ViddikSymbolProcessor(
                             "addAll(%T().values.mapIndexed·{·index,·param·->·\n" +
                                 "··val·label·=·((param·as?·%T)?.previewLabel·?:·param.toString()).take(60)\n" +
                                 "··%T(name·=·%S·+·\"·-·\"·+·label·+·\"·#\"·+·index·+·\"·Dark\",·" +
-                                "group·=·%S,·width·=·%L,·" +
-                                "height·=·%L,·fontScale·=·%Lf,·content·=·{·%T(%T·provides·true)·{·%L·} })\n" +
+                                "group·=·%S,·width·=·%L,·height·=·%L,·" +
+                                "fontScale·=·%Lf,·%Lcontent·=·{·%T(%T·provides·true)·{·%L·} })\n" +
                                 "}.toList())\n",
                             providerClass,
                             previewLabelClass,
@@ -291,6 +296,7 @@ public class ViddikSymbolProcessor(
                             entry.width,
                             entry.height,
                             entry.fontScale,
+                            toleranceArgument(entry.tolerancePercent),
                             compositionLocalProvider,
                             localScreenshotDarkTheme,
                             paramCall,
@@ -490,6 +496,7 @@ private fun FixtureMetadata.toEntries(
                 darkVariant = darkVariant,
                 forceDark = dark,
                 fontScale = fontScale,
+                tolerancePercent = tolerancePercent,
                 wrapperQualifiedName = wrapperQualifiedName,
             ),
         )
@@ -504,10 +511,23 @@ private fun FixtureMetadata.toEntries(
             qualifiedFunctionName = qualifiedFunctionName,
             forceDark = dark,
             fontScale = fontScale,
+            tolerancePercent = tolerancePercent,
             wrapperQualifiedName = wrapperQualifiedName,
         )
     return if (darkVariant) listOf(base, base.copy(name = "$name Dark", forceDark = true)) else listOf(base)
 }
+
+/**
+ * A fixture's own `tolerancePercent`, as an argument to splice into the `ViddikComponent(...)` call —
+ * or nothing at all when it didn't state one.
+ *
+ * Emitted only when it was asked for, rather than always as `tolerancePercent = null`: the argument
+ * doesn't exist on `ViddikComponent` before 0.3.1, and a registry that names it unconditionally would
+ * stop compiling against an older `viddik-annotations` for every fixture in the module rather than for
+ * the fixtures actually using the feature.
+ */
+private fun toleranceArgument(tolerancePercent: Double?): CodeBlock =
+    tolerancePercent?.let { CodeBlock.of("tolerancePercent·=·%L,·", it) } ?: CodeBlock.of("")
 
 /**
  * Composes a fixture call inside its `@PreviewWrapper`, if it declared one.

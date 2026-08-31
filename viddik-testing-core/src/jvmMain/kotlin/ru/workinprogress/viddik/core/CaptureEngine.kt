@@ -27,6 +27,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.jetbrains.skia.Matrix44
 import org.jetbrains.skia.Surface
+import ru.workinprogress.viddik.LocalViddikCapture
 import ru.workinprogress.viddik.annotations.AUTO_HEIGHT
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
@@ -56,6 +57,10 @@ public fun captureComposable(
                 // path treats dp and pixel as the same unit (ViddikDensityTest pins that).
                 CompositionLocalProvider(
                     LocalDensity provides Density(LocalDensity.current.density, fontScale),
+                    // Provided before the caller's own locals, so a caller can still override it —
+                    // ViddikStableGlyphsTest turns it off to check the modifier costs nothing when no
+                    // capture is running.
+                    LocalViddikCapture provides true,
                     *compositionLocals.toTypedArray(),
                 ) {
                     Box(

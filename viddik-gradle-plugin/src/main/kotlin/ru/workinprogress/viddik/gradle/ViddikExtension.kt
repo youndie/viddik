@@ -40,9 +40,12 @@ public interface ViddikExtension {
 
     /**
      * Share of pixels allowed to differ before a comparison fails. Unset by default, leaving viddik's
-     * own 0.5% — which exists to absorb cross-OS rasterizer differences. A project that records and
-     * verifies on the same machine can afford to tighten this considerably. Becomes the
-     * `viddik.tolerancePercent` system property.
+     * own 0.05% (plus a ±2 per-channel allowance), which is what the residual cross-OS difference
+     * measures once fixtures bundle a font. Becomes the `viddik.tolerancePercent` system property.
+     *
+     * This is the threshold for the whole module. A single fixture that provably can't hold it says so
+     * itself — `@ViddikScreenshot(tolerancePercent = ...)` — rather than being paid for by loosening
+     * the check on every other fixture.
      */
     public val tolerancePercent: Property<Double>
 
