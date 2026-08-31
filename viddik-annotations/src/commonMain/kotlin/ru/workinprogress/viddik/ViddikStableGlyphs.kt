@@ -1,6 +1,5 @@
 package ru.workinprogress.viddik
 
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
@@ -57,13 +56,25 @@ public val LocalViddikCapture: ProvidableCompositionLocal<Boolean> = composition
  *
  * During a capture it costs what perspective costs Skia: measured at 800x600, a blurred fixture goes
  * from 56 ms to 95 ms on Linux, and does not move on macOS.
+ *
+ * The explicit `Modifier.` receiver in the body is not decoration: `then(glyphPerspectiveNudge())`
+ * reads as if it appended one node, but the extension's implicit receiver is this same chain, so it
+ * appends a *copy of the whole chain* plus the node. With a `layerBackdrop` in that chain the backdrop
+ * is recorded twice and the JVM dies inside Skia when the recording closes (issue #11); with a `blur`
+ * in it, the blur is silently applied twice. `ViddikStableGlyphsTest` pins both halves.
  */
-@Composable
-public fun Modifier.viddikStableGlyphs(): Modifier =
-    if (LocalViddikCapture.current) then(glyphPerspectiveNudge()) else this
+public fun Modifier.viddikStableGlyphs(): Modifier = this then Modifier.glyphPerspectiveNudge()
 
 /**
- * The platform half: concatenate a perspective term onto whatever canvas is drawing this subtree.
+ * The platform half: a draw node that concatenates a perspective term onto whatever canvas is drawing
+ * this subtree, and only while [LocalViddikCapture] says a capture is running.
+ *
+ * Deliberately a plain modifier over a node rather than a `@Composable` factory reading the local
+ * itself. A composable factory recreates its element on every composition, and a modifier element
+ * recreated while a `GraphicsLayer` is recording takes the JVM down inside Skia's record optimizer —
+ * measured against `io.github.kyant0:backdrop` in issue #11, and pinned by `ViddikStableGlyphsTest`.
+ * Reading the local from the node instead keeps the same "free outside a capture" behaviour without
+ * that shape.
  *
  * Only the desktop capture harness has a use for it. On Android there is no viddik capture to be
  * inside, and the actual is the receiver unchanged rather than a differently-drawn UI.
