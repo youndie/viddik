@@ -415,8 +415,12 @@ property.
 
 #### One fixture that can't hold the strict number
 
-One rendering path is not portable, and it is a specific one: **text inside a layer that carries a
-`RenderEffect`** — `Modifier.blur`, `graphicsLayer(renderEffect = ...)`, or any glass/backdrop effect.
+Three rendering paths are not portable, and they have one thing in common: the layer's content is
+rasterized in a space the capture root never reaches. **`Modifier.blur`**, **a runtime-shader
+`RenderEffect`** (which is what glass libraries are built on), and **a layer read back with
+`toImageBitmap()`**. Everything else that re-roots a subtree is fine and checked as such — `Dialog`,
+`Popup`, `CompositingStrategy.Offscreen`, a shadow with a non-rectangular clip, a plainly recorded
+layer: the `Canary/*` fixtures verify all of them on ubuntu, macos and windows per pull request.
 Skia factors the perspective out of the canvas matrix before rasterizing such a layer's content
 (image filters cannot work in a perspective space), which switches off exactly the mechanism that
 makes glyphs platform-independent, so they go back to the host font backend. Measured macOS to Linux,

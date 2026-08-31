@@ -536,6 +536,55 @@ doubles a capture (32 -> 56 ms); the inner term inside a blurred layer adds anot
 Dead end, measured: `SurfaceProps(isDeviceIndependentFonts = true)` on the capture surface changes
 nothing at all, inside a filtered layer or outside it.
 
+### The canaries (issue #14)
+
+The hole above was found by a consumer's suite going red, and the Dialog/Popup one before it the same
+way, months apart. `Canary/*` fixtures and `RerootingCanaryTest` (jvmTest) exist so the third one
+shows up here instead. Measured 01.09.2026, CMP 1.12.0 / skiko 0.150.1:
+
+| mechanism | term reaches the glyphs | needs `viddikStableGlyphs()` |
+|---|---|---|
+| no re-rooting, alpha layer | yes | no |
+| `Dialog`, `Popup` | yes | no |
+| `CompositingStrategy.Offscreen` | yes | no |
+| shadow + non-rectangular clip | yes | no |
+| a layer recorded and drawn back | yes | no |
+| **`Modifier.blur`** | **no** | yes |
+| **a runtime-shader `RenderEffect`** | **no** | yes |
+| **a layer read back with `toImageBitmap()`** | **no** | yes |
+
+Two of those three were predictions when #14 was filed and turned out to be true, which is the point:
+the rule is not "blur is special", it is "an image filter or a read-back rasterizes the layer's
+content in a space the scene matrix never reaches". Assume the next effect is a hole until measured.
+
+The two halves are meant to be read together and neither is sufficient. `RerootingCanaryTest` runs on
+one machine and answers "does the term reach the glyphs here", by rendering each shape with and
+without the term and measuring how much changes (~76 000 units for a rasterizer switch, zero for no
+switch). It cannot answer whether the pixels are the same on another OS. The `Canary/*` goldens answer
+exactly that, and only because `verify-goldens.yaml` runs them on three OSes at once.
+
+Rules a canary has to obey, each one paid for by #11:
+
+- **it contains text.** Without glyphs it asserts that Skia's scan converter is deterministic, which
+  was never in doubt — the bug report's own blur fixtures were green for that reason alone, and the
+  bug looked like a backdrop-library problem for three weeks because of it.
+- **the sharp variant, not the comfortable one.** The same defect measures 1.40% under `blur(2.dp)`
+  and 0.05% under `blur(8.dp)`: a wide blur spreads the difference until the channel tolerance hides
+  it.
+- **it must be able to fail.** For the three holes, that is removing `viddikStableGlyphs()`; for the
+  rest, `RerootingCanaryTest` fails the moment a mechanism changes sides.
+
+Not covered, deliberately: colour glyphs. Bitmap glyph formats cannot be path-filled at all, so the
+term is inapplicable by construction, and pinning it would mean committing a ~10 MB colour emoji font
+to this repo. Today it is caught earlier — Roboto has no emoji, so `ViddikGlyphCoverage.missingGlyphs`
+reports them — and that stops being true the day someone bundles a colour font.
+
+`Popup` earned a fix on the way in: `CaptureEngine` asked for a dialog node whenever the scene had a
+second root, so *any* fixture opening a popup — a dropdown menu, a tooltip — failed outright with
+"Expected exactly '1' node ... (IsDialog is defined)". A popup now keeps the whole scene, which is
+what it wants anyway: unlike a dialog it is positioned inside the window and belongs in the image
+next to whatever it is anchored to.
+
 A minimal Docker image (e.g. `eclipse-temurin:21-jdk`) needs `libgl1`/`libx11-6`/`libxext6`/
 `libxrender1` installed or skiko's native lib won't load at all (`UnsatisfiedLinkError` at
 `LibraryLoader.kt`) — Skiko links against libGL even for pure raster rendering. That container is how
