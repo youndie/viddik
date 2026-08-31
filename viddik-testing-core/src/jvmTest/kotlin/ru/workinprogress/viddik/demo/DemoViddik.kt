@@ -2,6 +2,7 @@ package ru.workinprogress.viddik.demo
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -10,6 +11,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.AndroidUiModes
 import androidx.compose.ui.tooling.preview.Preview
@@ -19,11 +21,16 @@ import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.tooling.preview.PreviewWrapper
 import androidx.compose.ui.tooling.preview.PreviewWrapperProvider
 import androidx.compose.ui.unit.dp
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
 import ru.workinprogress.viddik.LocalViddikDarkTheme
 import ru.workinprogress.viddik.ViddikShowroom
 import ru.workinprogress.viddik.annotations.ViddikComponent
 import ru.workinprogress.viddik.annotations.ViddikScreenshot
 import ru.workinprogress.viddik.core.viddikTypography
+import ru.workinprogress.viddik.viddikStableGlyphs
 
 // The demo has no font of its own, so it takes the bundled one — that is the only reason these
 // goldens are reproducible on any OS. A project with its own bundled font keeps that font and runs it
@@ -193,6 +200,47 @@ fun UnthemedButton() {
     Surface {
         Button(onClick = {}) {
             Text("Themed by the wrapper")
+        }
+    }
+}
+
+// --- glass -------------------------------------------------------------------------------------
+//
+// The one fixture here that depends on a third-party library, and the only golden in this repo that
+// proves the claim `Modifier.viddikStableGlyphs()` makes: text under a backdrop-blur layer is
+// rasterized the same way on every OS. It cannot be proved on one machine — the mechanism it guards
+// against is the host font backend — so it is proved by this file being verified on ubuntu, macos and
+// windows at once (`verify-goldens.yaml`).
+//
+// io.github.kyant0:backdrop is on the test classpath for this: `layerBackdrop` records the marked
+// subtree into a GraphicsLayer and `drawBackdrop` reads it back through a runtime shader, which is
+// exactly the shape that issue #11 came from and that no reconstruction of it reproduced faithfully.
+
+@ViddikScreenshot(name = "Glass over text", group = "Demo", width = 200, height = 160)
+@Composable
+fun GlassOverTextPreview() {
+    val backdrop = rememberLayerBackdrop()
+    DemoTheme(dark = false) {
+        Box(Modifier.size(200.dp, 160.dp)) {
+            Surface(
+                Modifier
+                    .size(200.dp, 160.dp)
+                    .layerBackdrop(backdrop)
+                    .viddikStableGlyphs(),
+            ) {
+                Box(Modifier.size(200.dp, 160.dp), contentAlignment = Alignment.Center) {
+                    Text("Refraction 1234")
+                }
+            }
+            Box(
+                Modifier
+                    .size(200.dp, 160.dp)
+                    .drawBackdrop(
+                        backdrop = backdrop,
+                        shape = { RoundedCornerShape(24.dp) },
+                        effects = { blur(8.dp.toPx()) },
+                    ),
+            )
         }
     }
 }

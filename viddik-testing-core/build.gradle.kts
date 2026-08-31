@@ -34,6 +34,7 @@ kotlin {
                 implementation(libs.junit.jupiter.engine)
                 implementation(libs.junit.platform.launcher)
                 implementation(libs.ui.tooling.preview)
+                implementation(libs.backdrop)
             }
         }
     }

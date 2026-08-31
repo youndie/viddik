@@ -284,7 +284,11 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
   - `ViddikGlyphCoverage.kt` — `missingGlyphs(text, fontBytes = robotoBytes)` / `codepointsOf(font)`,
     a minimal cmap (format 4 and 12) reader. Pure diagnostic, no Compose involvement: it answers "will
     this string reach the host's fonts?" before a golden encodes the answer.
-  - `DemoViddik.kt` (jvmTest) — the project's own self-test AND a living usage example: static fixture,
+  - `DemoViddik.kt` (jvmTest) — the project's own self-test AND a living usage example. Also the one
+    place a third-party dependency appears in this project: `io.github.kyant0:backdrop`, jvmTest only,
+    for the `Demo/Glass over text` fixture. It is there because glass is the only rendering path that
+    needs `viddikStableGlyphs()`, and a golden of it verified on three OSes is the only thing that
+    proves the modifier does what it claims: static fixture,
     dark-variant fixture, a `ViddikShowroom` self-screenshot, and a `@PreviewParameter` fixture using a
     bare `String` (which can't implement `ViddikPreviewLabel`, demonstrating the `toString()` fallback
     naming path). `demoTypography` is `viddikTypography()` unconditionally — the demo has no font of
@@ -485,8 +489,28 @@ independent probes, all reproducible from `viddik-testing-core`'s jvmTest:
 
 **The fix that works**, shipped as `Modifier.viddikStableGlyphs()` (`viddik-annotations`,
 `ViddikStableGlyphs.kt` + a desktop/android actual): concatenate the term inside the filtered layer,
-via a `drawWithContent` that saves the canvas, concats, draws the content and restores. Measured
-above, cross-OS difference goes to exactly 0.
+from a draw node that reads `LocalViddikCapture` at draw time. Measured above, cross-OS difference
+goes to exactly 0.
+
+Two things about its shape, both paid for once (0.3.2, after 0.3.1.17 shipped with the bug):
+
+- **`this then Modifier.glyphPerspectiveNudge()`, never `then(glyphPerspectiveNudge())`.** The second
+  form reads as "append one node" and is not: the extension's implicit receiver is the same chain, so
+  it appends a copy of the whole chain plus the node. A `blur` in that chain is then applied twice —
+  silently — and a `layerBackdrop` records its subtree twice, which takes the JVM down inside
+  `SkRecordNoopSaveLayerDrawRestores` when the recording closes. That crash is what the bug report in
+  issue #11 hit, and it was viddik's, not Skia's: the same canvas operations in a modifier that
+  appended only itself never crashed.
+- **The term is concatenated in and back out, not wrapped in save/restore.** The pair is exact —
+  the perturbation is a single off-diagonal cell, so `(I + E)(I - E) = I` — and it keeps the node from
+  leaving anything behind on a canvas it does not own.
+
+`ViddikStableGlyphsTest` pins both halves of that bug: `io.github.kyant0:backdrop` is on the jvmTest
+classpath so the crashing shape can be reproduced against the real library (a reconstruction of it
+with `rememberGraphicsLayer` never crashed, and would have been a guard that fires at nothing), and a
+padded fixture catches the silent chain doubling. Both were checked to fail with the bug reintroduced.
+The `Demo/Glass over text` golden carries the other half of the claim — that the rendering is actually
+portable — because that one can only be settled by `verify-goldens.yaml` running on three OSes.
 
 Placement is what makes it awkward, and why it is a modifier rather than something `CaptureEngine`
 does: it has to sit *inside* the blurred subtree, and Compose exposes no hook to inject it there —
