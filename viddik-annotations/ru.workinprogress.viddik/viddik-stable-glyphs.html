@@ -2,7 +2,7 @@
 <html class="no-js" lang="en">
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
-    <title>DEFAULT_MIN_MISMATCHED_PIXELS</title>
+    <title>viddikStableGlyphs</title>
 <link href="../../images/logo-icon.svg" rel="icon" type="image/svg"><script>var pathToRoot = "../../";</script>
     <script>document.documentElement.classList.replace("no-js", "js");</script>
     <script>const storage = localStorage.getItem("dokka-dark-mode")
@@ -42,7 +42,7 @@
         </div>
         <div class="navigation-controls">
         <ul class="filter-section filter-section_loading" id="filter-section" aria-label="Target filter">
-                <button class="platform-tag platform-selector jvm-like" data-active="" aria-pressed="true" data-filter=":viddik-testing-core/jvmMain">jvm</button>
+                <button class="platform-tag platform-selector jvm-like" data-active="" aria-pressed="true" data-filter=":viddik-annotations/commonMain">common</button>
             <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
                 <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox" data-role="dropdown-toggle" aria-controls="platform-tags-listbox" aria-haspopup="listbox" aria-expanded="false" aria-label="Toggle source sets"></button>
                 <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox" aria-label="Target filter">
@@ -53,9 +53,9 @@
                     </div>
                         <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
                             <label class="checkbox">
-                                <input type="checkbox" class="checkbox--input" id=":viddik-testing-core/jvmMain" data-filter=":viddik-testing-core/jvmMain">
+                                <input type="checkbox" class="checkbox--input" id=":viddik-annotations/commonMain" data-filter=":viddik-annotations/commonMain">
                                 <span class="checkbox--icon"></span>
-                                jvm
+                                common
                             </label>
                         </li>
                 </ul>
@@ -89,12 +89,12 @@
         </nav>
         <div id="resizer" class="resizer" data-item-type="BAR"></div>
         <div id="main" data-item-type="SECTION" role="main">
-<div class="main-content" data-page-type="member" id="content" pageids="viddik-testing-core::ru.workinprogress.viddik.core//DEFAULT_MIN_MISMATCHED_PIXELS/#/PointingToDeclaration//-298648151">
-  <div class="breadcrumbs"><a href="../index.html">viddik-testing-core</a><span class="delimiter">/</span><a href="index.html">ru.workinprogress.viddik.core</a><span class="delimiter">/</span><span class="current">DEFAULT_MIN_MISMATCHED_PIXELS</span></div>
+<div class="main-content" data-page-type="member" id="content" pageids="viddik-annotations::ru.workinprogress.viddik//viddikStableGlyphs/<ERROR CLASS> ERROR CLASS: Symbol not found for Modifier#/PointingToDeclaration//947188399">
+  <div class="breadcrumbs"><a href="../index.html">viddik-annotations</a><span class="delimiter">/</span><a href="index.html">ru.workinprogress.viddik</a><span class="delimiter">/</span><span class="current">viddikStableGlyphs</span></div>
   <div class="cover ">
-    <h1 class="cover"><span>DEFAULT_</span><wbr><span>MIN_</span><wbr><span>MISMATCHED_</span><wbr><span>PIXELS</span></h1>
+    <h1 class="cover"><span>viddik</span><wbr><span>Stable</span><wbr><span><span>Glyphs</span></span></h1>
   </div>
-  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-testing-core/jvmMain"><div class="symbol monospace"><span class="token keyword">const </span><span class="token keyword">val </span><a href="-d-e-f-a-u-l-t_-m-i-n_-m-i-s-m-a-t-c-h-e-d_-p-i-x-e-l-s.html">DEFAULT_MIN_MISMATCHED_PIXELS</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span><span class="token constant">16</span></div></div></div>
+  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-annotations/commonMain"><div class="symbol monospace"><span class="token keyword">fun </span>ERROR CLASS: Symbol not found for Modifier<span class="token punctuation">.</span><a href="viddik-stable-glyphs.html"><span class="token function">viddikStableGlyphs</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span>ERROR CLASS: Symbol not found for Modifier</div><p class="paragraph">Makes text drawn <i>inside</i> this subtree rasterize identically on every OS, even when the subtree sits inside a layer carrying a <code class="lang-kotlin">RenderEffect</code> — a <code class="lang-kotlin">Modifier.blur</code>, a <code class="lang-kotlin">graphicsLayer(renderEffect = ...)</code>, a glass/backdrop effect.</p><h3 class="">Why a fixture needs this at all</h3><p class="paragraph">viddik normally makes glyph rasterization platform-independent on its own, by handing the capture canvas a matrix with a 1e-9 perspective term: Skia gives up on its glyph mask cache when the matrix has perspective and fills glyph outlines with its own path rasterizer, which is identical in every skiko build. Nothing to opt into, and it reaches every layer of the scene — except one.</p><p class="paragraph">Skia factors the perspective back <i>out</i> of the matrix before rasterizing the contents of a layer that carries an image filter, because image filters cannot work in a perspective space. Inside such a layer the term is therefore absent, glyphs come from the host font backend (CoreText / DirectWrite / FreeType) again, and the golden stops being portable. Measured macOS to Linux: text under <code class="lang-kotlin">blur(2.dp)</code> mismatches 1.40% of pixels where the same text without the effect mismatches 0.00%.</p><p class="paragraph">This modifier puts the term back where the capture root cannot reach — inside the layer. Same measurement with it applied: 0.00%.</p><h3 class="">Where to put it</h3><p class="paragraph">On the content that is being blurred, inside the effect rather than around it — the node the effect reads, which for a backdrop is the one marked as the backdrop source:</p><div class="sample-container"><pre><code class="block lang-kotlin" theme="idea">Box(Modifier.blur(8.dp).viddikStableGlyphs()) { Text("under glass") }<br>Box(Modifier.layerBackdrop(backdrop).viddikStableGlyphs()) { Text("under glass") }</code></pre><span class="copy-tooltip"><div class="copy-popup-wrapper popup-to-left"><span class="copy-popup-icon"></span><span>Content copied to clipboard</span></div><span class="copy-icon"></span></span></div><p class="paragraph">Applied around the effect instead of inside it, it does nothing at all: that is where the capture root's own term already is, and where Skia already discards it.</p><h3 class="">What it costs</h3><p class="paragraph">Outside a capture — which is to say in the app — it is one composition-local read and nothing else: <a href="-local-viddik-capture.html">LocalViddikCapture</a> is <code class="lang-kotlin">false</code>, and the modifier returns the receiver untouched. That is why this belongs in <code class="lang-kotlin">viddik-annotations</code> and is safe to call from production code.</p><p class="paragraph">During a capture it costs what perspective costs Skia: measured at 800x600, a blurred fixture goes from 56 ms to 95 ms on Linux, and does not move on macOS.</p></div></div>
 </div>
     <div class="footer">
         <div class="footer--container">
