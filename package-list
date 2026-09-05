@@ -2,11 +2,11 @@ $dokka.format:html-v1
 $dokka.linkExtension:html
 
 module:viddik-annotations
-ru.workinprogress.viddik
-ru.workinprogress.viddik.annotations
+io.github.youndie.viddik
+io.github.youndie.viddik.annotations
 module:viddik-gradle-plugin
-ru.workinprogress.viddik.gradle
+io.github.youndie.viddik.gradle
 module:viddik-processor
-ru.workinprogress.viddik.processor
+io.github.youndie.viddik.processor
 module:viddik-testing-core
-ru.workinprogress.viddik.core
+io.github.youndie.viddik.core
