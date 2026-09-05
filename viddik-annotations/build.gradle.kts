@@ -11,7 +11,7 @@ plugins {
 
 kotlin {
     android {
-        namespace = "ru.workinprogress.viddik.annotations"
+        namespace = "io.github.youndie.viddik.annotations"
         compileSdk = 37
         minSdk = 24
     }

@@ -29,8 +29,8 @@ dependencies {
 gradlePlugin {
     plugins {
         create("viddik") {
-            id = "ru.workinprogress.viddik"
-            implementationClass = "ru.workinprogress.viddik.gradle.ViddikPlugin"
+            id = "io.github.youndie.viddik"
+            implementationClass = "io.github.youndie.viddik.gradle.ViddikPlugin"
             displayName = "viddik screenshot testing"
             description =
                 "Wires viddik screenshot testing into a Compose Multiplatform or plain JVM module: " +
