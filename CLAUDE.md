@@ -46,9 +46,9 @@ anything under `org.jetbrains.compose` is labelled `goldens-may-change` because 
 those PRs need a re-record and a look at the diff, and the three-OS check failing on them is the
 signal working, not a flake.
 
-Downstream consumers resolve `ru.workinprogress:viddik-*` via `mavenLocal()` — after any change here,
+Downstream consumers resolve `io.github.youndie.viddik:viddik-*` via `mavenLocal()` — after any change here,
 `publishToMavenLocal` before rebuilding them. Versions are bumped by hand in
-`gradle.properties` (`viddik.version`, currently `0.3.1`); Gradle/consumers cache by exact version+build
+`gradle.properties` (plain `version`, currently `0.4.0`); Gradle/consumers cache by exact version+build
 hash so a republish under the same version is picked up by build cache invalidation, not by version
 diffing — if a consumer's build looks stale after a republish, `--no-build-cache` or bump the version.
 
@@ -99,7 +99,7 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
   NOT auto-create one for a plain-jvm module the way it does for `kotlin("multiplatform")` targets.
   - `ViddikProcessorProvider` — `SymbolProcessorProvider`, registered via
     `src/main/resources/META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider`
-    (a one-line file naming `ru.workinprogress.viddik.processor.ViddikProcessorProvider` — **if you
+    (a one-line file naming `io.github.youndie.viddik.processor.ViddikProcessorProvider` — **if you
     rename this class, this file must be updated too**, or KSP fails at runtime with `Provider ... not
     found` even though everything compiles fine). Reads the `viddik.generateTests` KSP option
     (`environment.options["viddik.generateTests"] != "false"`) — consumers that only want the browser
@@ -175,7 +175,7 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       unconditionally.
     - Generates `GeneratedViddikRegistry` (object, `val components: List<ViddikComponent>`) always, and
       `GeneratedViddikTests` (a `@TestFactory` JUnit5 class calling `ViddikEngine.dynamicTests(...)`)
-      only when `generateTests` is true. Both go in package `ru.workinprogress.viddik.generated`.
+      only when `generateTests` is true. Both go in package `io.github.youndie.viddik.generated`.
     - KotlinPoet `CodeBlock`s use `·` (middle dot) as escaped literal spaces in generated string
       concatenation — plain spaces get collapsed/reformatted by KotlinPoet's own indentation logic.
 
@@ -310,7 +310,7 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     overriding `LocalDensity` would move the goldens now, on a guess.
 
 - **viddik-gradle-plugin** — plain `kotlin("jvm")` + `java-gradle-plugin`, plugin id
-  `ru.workinprogress.viddik`. Exists because the wiring it replaces was copied by hand into every
+  `io.github.youndie.viddik`. Exists because the wiring it replaces was copied by hand into every
   consumer that predates it, each spelling the same names slightly differently.
   - `ViddikLayout` — the naming fork, and the only part with unit tests: `jvm("desktop")` →
     `kspDesktopTest`/`desktopTest`/`src/desktopTest/snapshots`, unnamed `jvm()` → `kspJvmTest`/
@@ -630,8 +630,8 @@ snapshot.yaml`) still supplies them as plain environment variables prefixed `ORG
 (`ORG_GRADLE_PROJECT_REPOSILITE_USER` etc.), which Gradle auto-maps to project properties, so
 `findProperty("REPOSILITE_USER")` sees them without any extra wiring. The `VERSION` property, when
 present, overrides the version of every registered `MavenPublication` at publish time only (base
-version + build number, e.g. `0.3.1.482` — computed by the workflow's "Determine version" step) —
-`publishToMavenLocal` never sees it and always publishes plain `0.3.1`, so local dev doesn't pollute
+version + build number, e.g. `0.4.0.482` — computed by the workflow's "Determine version" step) —
+`publishToMavenLocal` never sees it and always publishes plain `0.4.0`, so local dev doesn't pollute
 `~/.m2` with one version per rebuild. `./gradlew publish` / `publishAllPublicationsToWipRepository`
 (root-level invocation runs it in every subproject that has it) pushes to `wip`; `publishToMavenLocal`
 is unaffected by any of this and always available with no credentials.
@@ -649,7 +649,7 @@ without it, ktlint flags every PascalCase `@Composable` function name as a style
 
 ## Consumers
 
-Downstream consumers depend on `ru.workinprogress:viddik-*` either through `mavenLocal()` (a fresh
+Downstream consumers depend on `io.github.youndie.viddik:viddik-*` either through `mavenLocal()` (a fresh
 clone needs `viddik`'s `publishToMavenLocal` run manually first — there's no CI wiring to
 auto-publish `viddik` before building a consumer) or, once a version has actually been pushed to
 `wip` via the publish workflow, the public `https://reposilite.kotlin.website/snapshots` repository
@@ -657,7 +657,7 @@ directly (no credentials needed to read) — check a given consumer's own `setti
 which it's currently wired for; both are legitimate depending on whether local iteration or a real
 published version is being tested against.
 
-Since `viddik-gradle-plugin` exists, a consumer normally applies `id("ru.workinprogress.viddik")` and
+Since `viddik-gradle-plugin` exists, a consumer normally applies `id("io.github.youndie.viddik")` and
 declares none of this by hand. Consumers that predate the plugin still carry the hand-rolled
 version; migrating one means deleting its `screenshotTest` task, its `viddik-*` dependencies and its
 `kotlin.srcDir("build/generated/ksp/...")` line, then renaming `screenshotTest` → `viddikVerify` in
@@ -665,11 +665,11 @@ its README and CI. The coordinates below are what the plugin picks for itself, a
 need with `viddik { addDependencies = false }`:
 
 - **A KMP consumer module** (e.g. a `jvm("desktop")` target) depends on the base coordinates without a
-  target suffix (`ru.workinprogress:viddik-annotations:0.3.1`, `ru.workinprogress:viddik-testing-core:0.3.1`)
+  target suffix (`io.github.youndie.viddik:viddik-annotations:0.4.0`, `io.github.youndie.viddik:viddik-testing-core:0.4.0`)
   since a KMP-aware consumer resolves the right variant through Gradle module metadata regardless of the
   producer's/consumer's local target *name* matching. KSP processor dependency example:
-  `add("kspDesktopTest", "ru.workinprogress:viddik-processor:0.3.1")`.
+  `add("kspDesktopTest", "io.github.youndie.viddik:viddik-processor:0.4.0")`.
 - **A plain `kotlin("jvm")` consumer module**, NOT KMP-aware, needs the explicit platform-suffixed
-  artifacts instead: `ru.workinprogress:viddik-annotations-desktop:0.3.1` (the `jvm("desktop")` target
-  publication) and `ru.workinprogress:viddik-testing-core-jvm:0.3.1` (the unnamed `jvm()` target
-  publication) plus `kspTest("ru.workinprogress:viddik-processor:0.3.1")`.
+  artifacts instead: `io.github.youndie.viddik:viddik-annotations-desktop:0.4.0` (the `jvm("desktop")` target
+  publication) and `io.github.youndie.viddik:viddik-testing-core-jvm:0.4.0` (the unnamed `jvm()` target
+  publication) plus `kspTest("io.github.youndie.viddik:viddik-processor:0.4.0")`.

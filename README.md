@@ -2,10 +2,7 @@
 
 [![ktlint](https://img.shields.io/badge/ktlint%20code--style-%E2%9D%A4-FF4081.svg)](https://ktlint.github.io/)
 [![kotlin](https://img.shields.io/badge/Kotlin-2.4.10-blue?logo=kotlin&logoColor=white)](https://kotlinlang.org)
-[![viddik-annotations](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-annotations?name=annotations&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-annotations)
-[![viddik-processor](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-processor?name=processor&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-processor)
-[![viddik-testing-core](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-testing-core?name=testing-core&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-testing-core)
-[![viddik-gradle-plugin](https://reposilite.kotlin.website/api/badge/latest/snapshots/ru/workinprogress/viddik-gradle-plugin?name=gradle-plugin&color=40c14a&prefix=v)](https://reposilite.kotlin.website/#/snapshots/ru/workinprogress/viddik-gradle-plugin)
+[![maven central](https://img.shields.io/maven-central/v/io.github.youndie.viddik/viddik-gradle-plugin?label=maven%20central&color=40c14a)](https://central.sonatype.com/namespace/io.github.youndie.viddik)
 [![API Docs](https://img.shields.io/badge/docs-Dokka-blue?logoColor=white)](https://youndie.github.io/viddik/)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -20,20 +17,26 @@ verify) or shown live in a portable browser (`ViddikShowroom`), all on a plain J
 
 ### 📦 Installation
 
-Add the Reposilite snapshot repository to `settings.gradle.kts`, and apply the plugin:
+From 0.4.0 viddik is on Maven Central as `io.github.youndie.viddik`. Up to 0.3.3 it was
+`ru.workinprogress` on `https://reposilite.kotlin.website/snapshots`; that group is not on Central
+and nothing new is published under it, so moving to 0.4.0 means changing the coordinates and the
+plugin id, and nothing else.
+
+`mavenCentral()` belongs in **both** blocks. The dependencies would find it through the second one
+alone, but a plugin is resolved by its marker out of `pluginManagement`, which does not look at
+Maven Central unless it is told to:
 
 ```kotlin
 // settings.gradle.kts
 pluginManagement {
     repositories {
         gradlePluginPortal()
-        maven("https://reposilite.kotlin.website/snapshots")
+        mavenCentral()
     }
 }
 dependencyResolutionManagement {
     repositories {
         mavenCentral()
-        maven("https://reposilite.kotlin.website/snapshots")
     }
 }
 ```
@@ -42,7 +45,7 @@ dependencyResolutionManagement {
 // build.gradle.kts of the module that holds the fixtures
 plugins {
     id("com.google.devtools.ksp") version "<KSP_VERSION>" // must match your Kotlin compiler version
-    id("ru.workinprogress.viddik") version "<VERSION>"
+    id("io.github.youndie.viddik") version "<VERSION>"
 }
 ```
 
@@ -110,14 +113,14 @@ With `addDependencies = false` — or without the plugin at all:
 ```kotlin
 dependencies {
     // KMP consumer (e.g. your own jvm("desktop") target) — base coordinates, no target suffix:
-    testImplementation("ru.workinprogress:viddik-annotations:<VERSION>")
-    testImplementation("ru.workinprogress:viddik-testing-core:<VERSION>")
-    add("kspDesktopTest", "ru.workinprogress:viddik-processor:<VERSION>")
+    testImplementation("io.github.youndie.viddik:viddik-annotations:<VERSION>")
+    testImplementation("io.github.youndie.viddik:viddik-testing-core:<VERSION>")
+    add("kspDesktopTest", "io.github.youndie.viddik:viddik-processor:<VERSION>")
 
     // Plain kotlin("jvm") consumer, NOT KMP-aware — needs the explicit per-target artifacts instead:
-    // testImplementation("ru.workinprogress:viddik-annotations-desktop:<VERSION>")
-    // testImplementation("ru.workinprogress:viddik-testing-core-jvm:<VERSION>")
-    // kspTest("ru.workinprogress:viddik-processor:<VERSION>")
+    // testImplementation("io.github.youndie.viddik:viddik-annotations-desktop:<VERSION>")
+    // testImplementation("io.github.youndie.viddik:viddik-testing-core-jvm:<VERSION>")
+    // kspTest("io.github.youndie.viddik:viddik-processor:<VERSION>")
 }
 ```
 
