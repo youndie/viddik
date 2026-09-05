@@ -22,7 +22,14 @@ kotlin {
                 // system-agnostic.
                 implementation(libs.compose.material3)
                 api(libs.ui.test)
-                api(compose.desktop.currentOs)
+                // `common` AND NOT `currentOs`, and the difference only shows up in the POM.
+                // `compose.desktop.currentOs` resolves to the machine that ran the build —
+                // `desktop-jvm-macos-arm64` here — and publishing it puts that machine's skiko
+                // runtime at compile scope for every consumer, whatever they run on. The classes
+                // this module compiles against come from `common`; the native runtime belongs to
+                // whoever is doing the rendering, which is why a consumer's test source set has had
+                // to add `compose.desktop.currentOs` itself all along.
+                api(compose.desktop.common)
                 api(libs.junit.jupiter.api)
                 api(libs.junit.vintage.engine)
                 implementation(libs.kotlinx.coroutines.test)
@@ -35,6 +42,9 @@ kotlin {
                 implementation(libs.junit.platform.launcher)
                 implementation(libs.ui.tooling.preview)
                 implementation(libs.backdrop)
+                // The host's skiko, for the source set that actually renders. Nothing published
+                // carries it, so this is where it has to be — the same line every consumer writes.
+                implementation(compose.desktop.currentOs)
             }
         }
     }
