@@ -22,9 +22,7 @@ From 0.4.0 viddik is on Maven Central as `io.github.youndie.viddik`. Up to 0.3.3
 and nothing new is published under it, so moving to 0.4.0 means changing the coordinates and the
 plugin id, and nothing else.
 
-`mavenCentral()` belongs in **both** blocks. The dependencies would find it through the second one
-alone, but a plugin is resolved by its marker out of `pluginManagement`, which does not look at
-Maven Central unless it is told to:
+`mavenCentral()` belongs in **both** blocks, and `google()` beside the second one:
 
 ```kotlin
 // settings.gradle.kts
@@ -36,10 +34,19 @@ pluginManagement {
 }
 dependencyResolutionManagement {
     repositories {
+        google()
         mavenCentral()
     }
 }
 ```
+
+Both halves of that were found by resolving from an empty project rather than by reading a POM.
+A plugin is resolved by its **marker**, out of `pluginManagement` — a block that does not look at
+Maven Central unless it is told to. And Compose Multiplatform's desktop artifacts, which viddik
+brings with it, depend on `androidx.compose.runtime:runtime` and `androidx.lifecycle:*`, which are
+published to Google's Maven repository and not to Central: without `google()` the build fails with
+`Could not find androidx.compose.runtime:runtime`, naming an artifact rather than the missing
+repository. Most Compose projects already carry `google()`; an empty one does not.
 
 ```kotlin
 // build.gradle.kts of the module that holds the fixtures
