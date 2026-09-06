@@ -1,20 +1,27 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  extends: ["config:recommended"],
-  labels: ["dependencies"],
-  // One batch a week rather than a PR per release: every update here has to survive a three-OS
-  // golden check, so they are cheap to review together and noisy one at a time.
-  schedule: ["* 0-6 * * 1"],
-  prConcurrentLimit: 5,
+
+  // The portfolio's shared configuration, extended by name: the Monday batch, the limits, the
+  // labels, the kotlin and kotlinx groups, `ci actions`, and majors going to a human. The reason
+  // written here for batching still holds and is the preset's reason too — every update has to
+  // survive a three-OS golden check, so they are cheap to review together and noisy one at a time.
+  //
+  // The automerge preset is NOT extended: nothing merges itself here today. Its precondition would
+  // hold — verify-goldens.yaml runs on `pull_request` — but that check is exactly the one that is
+  // expected to fail on a Compose bump, so arming automerge here deserves its own decision rather
+  // than a rider on a config change.
+  extends: ["github>youndie/sborka"],
+
+  // Below the extends, so these win: package rules are concatenated, preset first, and the last
+  // match takes effect.
   packageRules: [
     {
       // KSP is versioned against the compiler it runs in — a Kotlin bump without the matching KSP
-      // fails at runtime with a version-mismatch error, not at configuration time.
-      groupName: "kotlin + ksp",
-      matchPackageNames: [
-        "org.jetbrains.kotlin{/,}**",
-        "com.google.devtools.ksp{/,}**",
-      ],
+      // fails at runtime with a version-mismatch error, not at configuration time. The preset's
+      // `kotlin` rule does not match KSP, so it is named here and joins that group by name, which
+      // is what keeps the pair in one pull request.
+      groupName: "kotlin",
+      matchPackageNames: ["com.google.devtools.ksp{/,}**"],
     },
     {
       // Anything that can move a pixel. Compose renders the goldens, so these PRs need
