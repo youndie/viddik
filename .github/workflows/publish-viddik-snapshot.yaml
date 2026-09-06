@@ -1,3 +1,5 @@
+# The steps this file used to spell out live in sborka now — `.github/workflows/publish-wip.yaml`,
+# called below. What stays here is what is true of viddik and not of the other libraries.
 name: Publish viddik wip snapshots
 
 on:
@@ -5,38 +7,18 @@ on:
   push:
     branches: [ main ]
 
-permissions:
-  contents: write
-
 jobs:
-  publish-viddik:
-    runs-on: [ ubuntu-latest ]
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v5
-
-      # Java and Gradle in one step, at the version the whole portfolio uses.
-      - uses: youndie/sborka/.github/actions/setup-kotlin@main
-
-      # The head of the version from gradle.properties with the run number on the tail: two publishes
-      # in a row must not produce the same artifact, or a consumer cannot tell them apart and keeps
-      # the cached older one. The action reads plain `version`, which is where the head lives now —
-      # it was `viddik.version`, one more name for the same thing, and the same six lines of shell
-      # were copied into three repositories.
-      - name: Determine version
-        id: ver
-        uses: youndie/sborka/.github/actions/determine-version@main
-
-      - name: Build
-        run: ./gradlew build publishAllPublicationsToWipRepository dokkaGenerate --no-daemon
-        env:
-          ORG_GRADLE_PROJECT_REPOSILITE_USER: ${{ secrets.REPOSILITE_USER }}
-          ORG_GRADLE_PROJECT_REPOSILITE_SECRET: ${{ secrets.REPOSILITE_SECRET }}
-          ORG_GRADLE_PROJECT_VERSION: ${{ steps.ver.outputs.version }}
-
-      - name: Deploy dokka to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build/dokka/html
-          full_commit_message: "📚 Deploy Dokka documentation"
+  publish:
+    # Granted here rather than in the called workflow: a called job cannot be given more than the
+    # job calling it has. The one step that needs it is the dokka deploy.
+    permissions:
+      contents: write
+    uses: youndie/sborka/.github/workflows/publish-wip.yaml@main
+    with:
+      tasks: build publishAllPublicationsToWipRepository dokkaGenerate
+      dokka: true
+    # Named one by one rather than `secrets: inherit`: this hands them to a workflow in another
+    # repository, and the two it needs are the two it gets.
+    secrets:
+      REPOSILITE_USER: ${{ secrets.REPOSILITE_USER }}
+      REPOSILITE_SECRET: ${{ secrets.REPOSILITE_SECRET }}
