@@ -48,19 +48,37 @@ signal working, not a flake.
 
 Downstream consumers resolve `io.github.youndie.viddik:viddik-*` via `mavenLocal()` — after any change here,
 `publishToMavenLocal` before rebuilding them. Versions are bumped by hand in
-`gradle.properties` (plain `version`, currently `0.4.0`); Gradle/consumers cache by exact version+build
+`gradle.properties` (plain `version`, currently `0.5.0`); Gradle/consumers cache by exact version+build
 hash so a republish under the same version is picked up by build cache invalidation, not by version
 diffing — if a consumer's build looks stale after a republish, `--no-build-cache` or bump the version.
 
 ## Module Structure
 
 Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testing-core` (depends on
-`viddik-annotations`, KSP-processed by `viddik-processor` in its own `jvmTest`) / any consumer module
+`viddik-annotations`, KSP-processed by `viddik-processor` in its own `jvmTest`) / `viddik-showroom`
+(depends on `viddik-annotations`) / any consumer module
 (depends on both `viddik-annotations` + `viddik-testing-core`, KSP-processed by `viddik-processor`).
 `viddik-gradle-plugin` depends on none of them at compile time — it only knows their coordinates.
 
-- **viddik-annotations** — Kotlin Multiplatform (`android()` + `jvm("desktop")`), Compose Multiplatform
-  UI only (LazyColumn/Text/clickable — no platform APIs), so adding targets here is unconstrained.
+- **viddik-annotations** — Kotlin Multiplatform (`android()`, `jvm("desktop")`, `iosArm64()`,
+  `iosSimulatorArm64()`), Compose Multiplatform UI only (LazyColumn/Text/clickable — no platform
+  APIs), so adding targets here is unconstrained.
+  - **No `iosX64`.** Compose Multiplatform stopped publishing the Intel-simulator variant, and asking
+    for it fails resolution of *every* compose artifact in `commonMain` ("Unresolved platforms:
+    [iosX64]") rather than of that one target.
+  - **`applyDefaultHierarchyTemplate()` is called explicitly**, because the root `gradle.properties`
+    sets `kotlin.mpp.applyDefaultHierarchyTemplate=false`. Without it `kotlin.sourceSets.names` has no
+    `iosMain` and the two iOS targets have nowhere to share an actual.
+  - **`compileIosMainKotlinMetadata` runs with `-Werror` off**, and only that task. The catalog has
+    `compose-multiplatform = 1.12.0` and `compose-material3 = 1.12.0-alpha03` — material3 has no
+    version on the stable line — and the two lines disagree about lifecycle: `compose.ui` depends on
+    the `org.jetbrains.androidx.lifecycle` fork, material3 alpha has moved to real
+    `androidx.lifecycle`. Both publish klibs with the same `unique_name`, the shared metadata
+    compilation loads both, and Kotlin has no flag to silence just that warning
+    (`-Xklib-duplicated-unique-name-strategy` picks a winner, it does not stop the message). Invisible
+    on JVM and Android, which is why nothing noticed until the iOS targets arrived; inert here,
+    because this module names no lifecycle API. The per-target compilations keep `-Werror`. The
+    exception removes itself when material3 gets a version matching `compose-multiplatform`.
   - `ViddikScreenshot` (`annotations/ViddikScreenshot.kt`) — the marker annotation (`name`, `group`,
     `width`, `height`, `darkVariant`, `tolerancePercent`). Every size parameter defaults to `UNSPECIFIED`
     (`Int.MIN_VALUE`, in `ViddikComponent.kt`) rather than to its old literal, because KSP substitutes
@@ -77,10 +95,31 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     (`val previewLabel: String`) a `@PreviewParameter` provider's value type can implement for a
     descriptive golden-file name instead of a bare index; see the processor bullet below for the
     fallback behavior.
-  - `ViddikShowroom` (`ViddikShowroom.kt`) — the portable component browser: list grouped by `group`,
-    click navigates to a full-screen detail view with a `← group/name` back row. Used both as the
-    interactive desktop browser (`ViddikShowroom(GeneratedViddikRegistry.components)` in a
-    `JavaExec`-launched window) and self-tested as an ordinary screenshot in `DemoViddik.kt`.
+  - `ViddikShowroom` (`ViddikShowroom.kt`) — the portable component browser: a search field over a
+    list grouped by `group`, click navigates to a full-screen detail view with a `← group/name` back
+    row. Used as the interactive desktop browser (`ViddikShowroom(GeneratedViddikRegistry.components)`
+    in a `JavaExec`-launched window), as the Android and iOS one through `viddik-showroom`, and
+    self-tested as three ordinary screenshots in `DemoViddik.kt` (list, mid-search, no matches).
+    - Search is `matchesQuery` — `internal`, and unit-tested from the module's own `commonTest`
+      rather than promoted to public API to make it reachable. The query is split on whitespace and
+      every token has to appear in `"$group $name"`, case-insensitively, so `wid but` finds
+      `Widgets / Button`. Whitespace-only is an empty query and matches everything; a stray space
+      emptying the list would read as "this module has no components".
+    - `grouped` is `groupBy { }.entries.sortedBy { it.key }` and not `toSortedMap()`: the latter
+      returns a `java.util.SortedMap` and stopped compiling the day this module grew iOS targets.
+    - The clear button draws `×` (U+00D7) and not `✕`: a glyph the font does not have is not just
+      drawn wrong, it moves its neighbours, and this one has to survive whatever font a consumer's
+      theme brings.
+    - Insets (`WindowInsets.safeDrawing`) are handled here rather than in each host, so an embedded
+      showroom keeps its search field out from under a notch. `safeDrawing` is empty on desktop, so
+      the goldens are unaffected.
+  - `ViddikShowroomState` (`ViddikShowroomState.kt`) — `query` + `selected`, hoisted and optional
+    (`ViddikShowroom` remembers one if you pass none, so every old call site still compiles). It
+    exists for the Android back gesture: only a `BackHandler` in the host can close the detail view
+    instead of the activity, and this module must not depend on `androidx.activity` to provide one —
+    activity 1.11 drags in the KMP `androidx.lifecycle`/`savedstate` artifacts, and this module
+    publishes iOS klibs. `viddik-showroom` owns that dependency instead. It is also what lets a
+    screenshot fixture photograph a mid-search screen, which otherwise needs typing to reach.
   - `ViddikStableGlyphs.kt` — `LocalViddikCapture` (`compositionLocalOf { false }`, provided as `true`
     only by `CaptureEngine`) and `Modifier.viddikStableGlyphs()`, the one thing a consumer has to
     write by hand for text under a blur/glass layer to be portable. `internal expect fun
@@ -93,10 +132,36 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     processor only wraps the dark-variant content in `CompositionLocalProvider(LocalViddikDarkTheme
     provides true) { ... }`, it doesn't force a theme.
 
+- **viddik-showroom** — Kotlin Multiplatform (`android()`, `jvm("desktop")`, both iOS targets), the
+  optional host layer and the only viddik artifact that ever belongs on a consumer's `main`.
+  - `ViddikShowroomApp` (commonMain) — `ViddikShowroom` inside a default `MaterialTheme`, with the
+    state hoisted so the back handler can reach it. `ViddikShowroom` itself imposes no theme, which is
+    what the capture engine wants; a running app wants the opposite.
+  - `ViddikShowroomBackHandler` — `internal expect`, `androidx.activity.compose.BackHandler` on
+    Android and nothing on the other two. It lives HERE and not in `viddik-annotations` for the
+    dependency reason recorded above: `androidx.activity` brings AndroidX's own KMP `lifecycle` and
+    `savedstate`, whose klibs collide by `unique_name` with the `org.jetbrains.androidx` forks
+    Compose Multiplatform ships. Confining it to `androidMain` of this module keeps it off the iOS
+    metadata classpath; the same scoped `-Werror` exception as in annotations covers what material3
+    contributes on its own.
+  - `ViddikShowroomActivity` (androidMain) — abstract `ComponentActivity`, one `components` override.
+    `ViddikShowroomUIViewController` (iosMain) — a `ComposeUIViewController` factory, PascalCase by
+    Compose Multiplatform convention with ktlint's `function-naming` suppressed for it.
+  - Both take the registry as an argument rather than looking it up. The desktop launcher's reflection
+    works because a Gradle task assembles its classpath; on a device the registry is an ordinary
+    reference in the consumer's own module, so a fixture that stopped compiling is a build error and
+    not an empty list at launch — and Kotlin/Native has no reflective lookup to offer anyway.
+
 - **viddik-processor** — Plain `kotlin("jvm")`, KSP `SymbolProcessor`. Publication needs an explicit
   `publishing { publications { create<MavenPublication>("maven") { from(components["java"]) } } }`
   block in its own `build.gradle.kts` — `maven-publish`/the `viddik.publishing` convention plugin does
   NOT auto-create one for a plain-jvm module the way it does for `kotlin("multiplatform")` targets.
+  - **Which run is this?** KSP options are project-wide — one `ksp { arg(...) }` map for every run in
+    a module — so `viddik.generateTests` cannot say "tests for the JVM run, registry only for the
+    common one". `ViddikProcessorProvider` reads it off `environment.platforms` instead: a run over
+    one compilation reports that compilation's single platform, a run over `commonMain` reports every
+    target the module has. `shouldGenerateTests = generateTests && !commonRun && jvmRun`, because
+    JUnit 5 is a JVM library and a `commonMain` run has to emit code every target compiles.
   - `ViddikProcessorProvider` — `SymbolProcessorProvider`, registered via
     `src/main/resources/META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider`
     (a one-line file naming `io.github.youndie.viddik.processor.ViddikProcessorProvider` — **if you
@@ -365,6 +430,66 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
   - `ViddikShowroomLauncher` (in `viddik-testing-core`, jvmMain) is the `viddikShowroom` task's main
     class — it loads `GeneratedViddikRegistry` **reflectively** because that class is generated into
     the *consumer's* test source set and isn't visible here at compile time.
+  - **`viddik { showroomTargets = true }`** is the registry-from-`commonMain` path, and the whole
+    reason it exists is that a test source set is never compiled into an application: a registry
+    generated there can be opened on the machine that ran the build and nowhere else.
+    - The plugin adds the processor to `kspCommonMainMetadata`, puts
+      `build/generated/ksp/metadata/commonMain/kotlin` on `commonMain`, and adds
+      `viddik-annotations` to `commonMainApi`. The srcDir is registered unconditionally — an srcDir
+      that does not exist contributes no sources, and it has to be in place before any compilation is
+      configured, which is earlier than the extension is final.
+    - **Two sets of task dependencies, not one.** Every `KotlinCompilationTask` is ordered after
+      `kspCommonMainKotlinMetadata`, and so is every task whose name starts with `ksp` — the
+      per-target KSP tasks read `commonMain` too, and Gradle fails the build outright with "uses this
+      output of task ... without declaring a dependency" when they are not.
+    - **The JUnit 5 class is written by the plugin, not by KSP** (`ViddikGenerateTestsTask`), and this
+      is the non-obvious part. KSP skips a source set with no Kotlin files in it at all
+      (`kspTestKotlinDesktop NO-SOURCE`), and a module whose fixtures moved to `commonMain` typically
+      has exactly that — so the processor never runs, no test class is written, and `viddikVerify`
+      passes with no tests in it. A Gradle task with an output directory has no such escape. The
+      plugin therefore also passes `viddik.generateTests=false` to KSP whenever `showroomTargets` is
+      on, so the two can never both write `GeneratedViddikTests.kt`. The emitted source is character
+      for character what the processor emits, under the same name, matched by the same
+      `*GeneratedViddikTests*` filter.
+    - The task's flag property is `showroomTargets` and not `enabled`: `Task` already has a Boolean
+      `enabled`, and Gradle refuses to decorate a type that shadows it with an abstract property.
+      It is an `@Input` rather than an `onlyIf` so that turning the feature off re-runs the task and
+      removes the file, instead of skipping and leaving a test class behind.
+
+## `samples/` — a separate build, on purpose
+
+`samples/` is its own Gradle build (`samples/settings.gradle.kts`), not a set of modules in this one.
+It has to be: a plugin cannot be applied to a sibling module of the build that produces it, and the
+whole point of these modules is to consume viddik the way a stranger's project does — through
+`id("io.github.youndie.viddik")` and the published coordinates.
+
+`includeBuild("..")` is declared **twice**, and both are load-bearing. Inside `pluginManagement` it
+substitutes the plugin marker; at the top level it substitutes ordinary dependencies. With only the
+first, `viddik-annotations` and `viddik-showroom` are looked up in a repository and reported missing
+at whatever version `gradle.properties` currently states.
+
+- `samples/fixtures` — fixtures in `commonMain`, `viddik { showroomTargets = true }`, and the iOS
+  executable (`iosSimulatorArm64 { binaries.executable { entryPoint = "...showroomMain" } }`). This is
+  the only place the commonMain-registry path is compiled at all.
+- `samples/android-app` — `com.android.application`. **No `org.jetbrains.kotlin.android`**: AGP 9 has
+  Kotlin support built in and refuses the plugin by name if you add it. Plugin versions are declared
+  once in `samples/build.gradle.kts` with `apply false`, because Gradle rejects a versioned request
+  for a plugin already on the build classpath.
+- `samples/scripts/ios-showroom.sh` — links the executable, wraps it in a `.app` directory with a
+  hand-written `Info.plist`, creates the simulator if it is missing, installs and launches. No Xcode
+  project: an iOS application is a `UIApplicationMain`, a delegate owning a window and a root view
+  controller, and all three come out of `platform.UIKit`. Three things stand between "it linked" and
+  "it draws", and none of them is visible from the code — `@OverrideInit constructor() : super()` on
+  the delegate (UIKit calls `[[Class alloc] init]`, and without it the app dies before any of its own
+  code runs), `CADisableMinimumFrameDurationOnPhone` in the plist (Compose Multiplatform throws a main
+  queue sanity check without it and shows nothing), and `UILaunchScreen` plus
+  `UIApplicationSceneManifest` (without them the app is letterboxed and has no status bar).
+- **The sample goldens are gitignored and CI runs `viddikRecord`, not `viddikVerify`.** The sample
+  fixtures theme with MaterialTheme's default typography — as a consumer's own components do — so they
+  draw in the host's system font and their PNGs are not portable between runners. Recording still
+  exercises the whole path (registry from `commonMain`, test class from the plugin, every fixture
+  through the engine); golden *portability* is what `verify-goldens.yaml` checks, on viddik's own
+  suite, which bundles a font through `viddikTypography()`.
 
 ## Cross-platform golden portability
 
@@ -630,8 +755,8 @@ snapshot.yaml`) still supplies them as plain environment variables prefixed `ORG
 (`ORG_GRADLE_PROJECT_REPOSILITE_USER` etc.), which Gradle auto-maps to project properties, so
 `findProperty("REPOSILITE_USER")` sees them without any extra wiring. The `VERSION` property, when
 present, overrides the version of every registered `MavenPublication` at publish time only (base
-version + build number, e.g. `0.4.0.482` — computed by the workflow's "Determine version" step) —
-`publishToMavenLocal` never sees it and always publishes plain `0.4.0`, so local dev doesn't pollute
+version + build number, e.g. `0.5.0.482` — computed by the workflow's "Determine version" step) —
+`publishToMavenLocal` never sees it and always publishes the bare `version`, so local dev doesn't pollute
 `~/.m2` with one version per rebuild. `./gradlew publish` / `publishAllPublicationsToWipRepository`
 (root-level invocation runs it in every subproject that has it) pushes to `wip`; `publishToMavenLocal`
 is unaffected by any of this and always available with no credentials.
@@ -665,11 +790,11 @@ its README and CI. The coordinates below are what the plugin picks for itself, a
 need with `viddik { addDependencies = false }`:
 
 - **A KMP consumer module** (e.g. a `jvm("desktop")` target) depends on the base coordinates without a
-  target suffix (`io.github.youndie.viddik:viddik-annotations:0.4.0`, `io.github.youndie.viddik:viddik-testing-core:0.4.0`)
+  target suffix (`io.github.youndie.viddik:viddik-annotations:<VERSION>`, `io.github.youndie.viddik:viddik-testing-core:<VERSION>`)
   since a KMP-aware consumer resolves the right variant through Gradle module metadata regardless of the
   producer's/consumer's local target *name* matching. KSP processor dependency example:
-  `add("kspDesktopTest", "io.github.youndie.viddik:viddik-processor:0.4.0")`.
+  `add("kspDesktopTest", "io.github.youndie.viddik:viddik-processor:<VERSION>")`.
 - **A plain `kotlin("jvm")` consumer module**, NOT KMP-aware, needs the explicit platform-suffixed
-  artifacts instead: `io.github.youndie.viddik:viddik-annotations-desktop:0.4.0` (the `jvm("desktop")` target
-  publication) and `io.github.youndie.viddik:viddik-testing-core-jvm:0.4.0` (the unnamed `jvm()` target
-  publication) plus `kspTest("io.github.youndie.viddik:viddik-processor:0.4.0")`.
+  artifacts instead: `io.github.youndie.viddik:viddik-annotations-desktop:<VERSION>` (the `jvm("desktop")` target
+  publication) and `io.github.youndie.viddik:viddik-testing-core-jvm:<VERSION>` (the unnamed `jvm()` target
+  publication) plus `kspTest("io.github.youndie.viddik:viddik-processor:<VERSION>")`.

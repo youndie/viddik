@@ -9,6 +9,7 @@ backdrop = "2.0.1"
 junitJupiter = "6.1.3"
 junitPlatform = "6.1.3"
 kotlinx-coroutines = "1.11.0"
+androidx-activity = "1.11.0"
 dokka = "2.2.0"
 # The shared build conventions. One number: every sborka plugin below takes its version from here.
 # `ktlint` is gone from this file — it named the PLUGIN version here and the TOOL version in nine
@@ -24,6 +25,12 @@ compose-material3 = { module = "org.jetbrains.compose.material3:material3", vers
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose-multiplatform" }
 ui-test = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "compose-multiplatform" }
 ui-test-junit4 = { module = "org.jetbrains.compose.ui:ui-test-junit4", version.ref = "compose-multiplatform" }
+
+# The Android showroom host only (viddik-showroom's androidMain). Kept out of viddik-annotations on
+# purpose: AndroidX activity 1.11 pulls the KMP androidx.lifecycle/savedstate artifacts, whose klibs
+# carry the same `unique_name` as the org.jetbrains.androidx forks Compose Multiplatform ships, and a
+# module with native targets then fails its metadata compilation on duplicate-library warnings.
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 
@@ -49,6 +56,10 @@ sborkaJvm = { id = "io.github.youndie.sborka.jvm", version.ref = "sborka" }
 sborkaLint = { id = "io.github.youndie.sborka.lint", version.ref = "sborka" }
 sborkaPublish = { id = "io.github.youndie.sborka.publish", version.ref = "sborka" }
 android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "androidGradlePlugin" }
+# The samples build only: an Android *application* is not a KMP module, so it takes the plain pair.
+android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

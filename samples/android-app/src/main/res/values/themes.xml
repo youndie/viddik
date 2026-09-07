@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Compose content brings its own MaterialTheme; this only keeps the system from drawing an
+         action bar above it and from flashing a light window background on a dark device. -->
+    <style name="Theme.ViddikShowroom" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+</resources>
