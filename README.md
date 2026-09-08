@@ -12,8 +12,9 @@ through a real **Compose Desktop/Skiko** JVM window instead of Android/LayoutLib
 > 🖼️ one annotation → a golden-file test + a live entry in an interactive component browser
 
 No emulator, no AVD, no LayoutLib — `@ViddikScreenshot`-annotated composables are collected by a KSP
-processor into a component registry, then either captured to PNG and diffed (`ViddikEngine`, record/
-verify) or shown live in a portable browser (`ViddikShowroom`), all on a plain JVM.
+processor into a component registry, then either captured to PNG and diffed on a plain JVM
+(`ViddikEngine`, record/verify) or shown live in a portable browser (`ViddikShowroom`) — in a desktop
+window, and from 0.5.0 in an Android or iOS app reading the same registry.
 
 ### 📦 Installation
 
@@ -108,6 +109,8 @@ Compose Multiplatform line rather than to a range of them — a mismatch shows u
 
 | viddik | Compose Multiplatform | Kotlin |
 |---|---|---|
+| 0.5.x | 1.12.x | 2.4.x |
+| 0.4.x | 1.12.x | 2.4.x |
 | 0.3.x | 1.12.x | 2.4.x |
 | 0.2.x | 1.12.x | 2.4.x |
 | 0.1.x | 1.11.x | 2.4.x |
@@ -118,6 +121,13 @@ engine both, which the plugin keeps in step by default.
 
 An Android consumer of `viddik-annotations` needs `compileSdk = 37` from 0.2.0 on — that is what
 Compose Multiplatform 1.12 requires of everything that depends on it.
+
+0.5.0 is where the browser leaves the desktop window. `viddik-showroom` and its two hosts, the
+`showroomTargets` registry, the search field over the component list, and the iOS targets on
+`viddik-annotations` (`iosArm64` and `iosSimulatorArm64`; Compose Multiplatform no longer publishes
+`iosX64`) all arrive there — 0.4.0 published `viddik-annotations` for Android and desktop only, so an
+iOS consumer needs 0.5.0 rather than a flag. `viddikDesignParity` and the `design*` options beside it
+are 0.5.0 as well.
 
 #### Declaring the dependencies by hand
 
