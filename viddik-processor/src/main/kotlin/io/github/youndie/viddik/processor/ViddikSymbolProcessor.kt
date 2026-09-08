@@ -77,6 +77,13 @@ public class ViddikSymbolProcessor(
     private val codeGenerator: CodeGenerator,
     private val logger: KSPLogger,
     private val generateTests: Boolean = true,
+    /**
+     * Whether this run is over `commonMain` rather than over one compilation. The registry is common
+     * code and can be emitted here; the JUnit 5 test class is not and cannot.
+     */
+    private val commonRun: Boolean = false,
+    /** Whether this run is over a single JVM compilation — the only place the test class compiles. */
+    private val jvmRun: Boolean = true,
 ) : SymbolProcessor {
     private var invoked = false
 
@@ -200,11 +207,21 @@ public class ViddikSymbolProcessor(
         if (entries.isNotEmpty()) {
             val dependencies = Dependencies(aggregating = true, *sourceFiles.toTypedArray())
             generateRegistry(entries, dependencies)
-            if (generateTests) generateTests(dependencies)
+            if (shouldGenerateTests) generateTests(dependencies)
         }
 
         return emptyList()
     }
+
+    /**
+     * `viddik { generateTests }` narrowed to the runs where the class it emits can actually compile.
+     *
+     * `generateTests` is a KSP option and KSP options are project-wide, so it cannot say "tests for
+     * the JVM run, registry only for the common one" on its own. The platform does: JUnit 5 is a JVM
+     * library, and a `commonMain` run has to produce code every target compiles.
+     */
+    private val shouldGenerateTests: Boolean
+        get() = generateTests && !commonRun && jvmRun
 
     private fun generateRegistry(
         entries: List<ViddikEntry>,

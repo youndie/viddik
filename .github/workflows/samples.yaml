@@ -1,0 +1,48 @@
+name: Samples
+
+# The samples are a separate Gradle build that consumes viddik through `includeBuild("..")` — the
+# plugin id, the published coordinates, `viddik { showroomTargets = true }`, all of it the way a
+# stranger's project would. That makes them the only place where the commonMain registry, the Android
+# activity and the iOS entry point are compiled at all, and an unbuilt sample rots without saying so.
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: samples-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-and-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: youndie/sborka/.github/actions/setup-kotlin@main
+
+      # RECORD, not verify, and it is a deliberate choice rather than a shortcut. The sample fixtures
+      # theme themselves with MaterialTheme's default typography — which is what a consumer's own
+      # components do — so they draw in the host's system font and their goldens are NOT portable
+      # across runners. Committing them would redden this job on font drift and say nothing true.
+      # Recording still runs the whole path this build exists to cover: registry generated from
+      # commonMain, test class written by the plugin, every fixture rendered through the engine.
+      # Golden *portability* is what `verify-goldens.yaml` checks, on viddik's own suite, which does
+      # bundle a font.
+      - name: Render every sample fixture
+        working-directory: samples
+        run: ../gradlew :fixtures:viddikRecord --no-daemon
+
+      - name: Build the Android showroom app
+        working-directory: samples
+        run: ../gradlew :android-app:assembleDebug --no-daemon
+
+  ios:
+    # The iOS half needs a mac, and only for the link step: Kotlin/Native cross-compiles the klib on
+    # any host, but the simulator executable is a Mach-O.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: youndie/sborka/.github/actions/setup-kotlin@main
+
+      - name: Link the iOS showroom executable
+        working-directory: samples
+        run: ../gradlew :fixtures:linkDebugExecutableIosSimulatorArm64 --no-daemon

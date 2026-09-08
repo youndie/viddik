@@ -41,4 +41,5 @@ plugins {
 include(":viddik-annotations")
 include(":viddik-processor")
 include(":viddik-testing-core")
+include(":viddik-showroom")
 include(":viddik-gradle-plugin")

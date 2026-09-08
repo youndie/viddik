@@ -6,3 +6,12 @@
 local.properties
 .idea
 .DS_Store
+
+# THE SAMPLE GOLDENS ARE NOT COMMITTED, and that is a statement about the samples and not about
+# viddik. The sample fixtures theme themselves with MaterialTheme's default typography — the way a
+# consumer's own components do — so they draw in whatever font the host has and their PNGs differ
+# between a mac and a Linux runner. viddik's own suite bundles a font through `viddikTypography()`
+# and its goldens ARE committed and verified on three operating systems; see `verify-goldens.yaml`.
+# What CI runs here is `viddikRecord`, which exercises the whole commonMain-registry path without
+# claiming a portability the sample never set up for.
+samples/*/src/*/snapshots/

@@ -11,6 +11,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.AndroidUiModes
@@ -27,6 +28,7 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import io.github.youndie.viddik.LocalViddikDarkTheme
 import io.github.youndie.viddik.ViddikShowroom
+import io.github.youndie.viddik.ViddikShowroomState
 import io.github.youndie.viddik.annotations.ViddikComponent
 import io.github.youndie.viddik.annotations.ViddikScreenshot
 import io.github.youndie.viddik.core.viddikTypography
@@ -77,19 +79,43 @@ fun SampleButtonPreview() {
     }
 }
 
+// The showroom's own sample registry. Three components in two groups is the smallest set that shows
+// grouping, a repeated name across groups, and a query that matches some of them and not others.
+private fun showroomSample() =
+    listOf(
+        ViddikComponent(name = "Text", group = "Widgets") { DemoTheme(dark = false) { Text("Hi") } },
+        ViddikComponent(name = "Button", group = "Widgets") {
+            DemoTheme(dark = false) { Button(onClick = {}) { Text("Go") } }
+        },
+        ViddikComponent(name = "Text", group = "Screens") { DemoTheme(dark = false) { Text("Screen preview") } },
+    )
+
 @ViddikScreenshot(name = "Showroom - list", group = "Showroom", width = 400, height = 300)
 @Composable
 fun ShowroomListPreview() {
-    val sample =
-        listOf(
-            ViddikComponent(name = "Text", group = "Widgets") { DemoTheme(dark = false) { Text("Hi") } },
-            ViddikComponent(name = "Button", group = "Widgets") {
-                DemoTheme(dark = false) { Button(onClick = {}) { Text("Go") } }
-            },
-            ViddikComponent(name = "Text", group = "Screens") { DemoTheme(dark = false) { Text("Screen preview") } },
-        )
     DemoTheme(dark = false) {
-        ViddikShowroom(sample)
+        ViddikShowroom(showroomSample())
+    }
+}
+
+// A showroom mid-search. The state is hoisted here only so a still image can be taken of a screen
+// that otherwise needs typing to reach: this is the one fixture that pins the match count, the clear
+// button and the narrowed list against a golden rather than against an assertion about a string.
+@ViddikScreenshot(name = "Showroom - searching", group = "Showroom", width = 400, height = 300)
+@Composable
+fun ShowroomSearchingPreview() {
+    val state = remember { ViddikShowroomState().apply { query = "wid t" } }
+    DemoTheme(dark = false) {
+        ViddikShowroom(showroomSample(), state = state)
+    }
+}
+
+@ViddikScreenshot(name = "Showroom - no matches", group = "Showroom", width = 400, height = 300)
+@Composable
+fun ShowroomNoMatchesPreview() {
+    val state = remember { ViddikShowroomState().apply { query = "checkbox" } }
+    DemoTheme(dark = false) {
+        ViddikShowroom(showroomSample(), state = state)
     }
 }
 

@@ -91,6 +91,27 @@ public interface ViddikExtension {
     public val addDependencies: Property<Boolean>
 
     /**
+     * Whether the component registry is generated from `commonMain` as well as compiled for the JVM,
+     * so that every target the module has — Android and iOS included — can open the showroom.
+     *
+     * `false` by default, which is the shape viddik started with: fixtures live in the test source
+     * set, the registry is generated there, and the only thing that can show it is the desktop window
+     * `viddikShowroom` opens. A test source set is not compiled into an app, so that registry can
+     * never reach a phone.
+     *
+     * Turning this on adds the processor to `kspCommonMainMetadata`, puts
+     * `build/generated/ksp/metadata/commonMain/kotlin` on `commonMain`, and orders every compilation
+     * after it. **The fixtures then have to live in `commonMain`**, not in the test source set — that
+     * is the actual migration, and the rest is wiring.
+     *
+     * Goldens keep working: the JVM run over the test source set finds no fixtures of its own but
+     * still emits the JUnit 5 class, over the registry `commonMain` produced, so `viddikVerify` and
+     * `viddikRecord` are unchanged. Only [generateTests] interacts with this — the test class is
+     * JUnit 5 and cannot be common, so it is emitted by the JVM run alone.
+     */
+    public val showroomTargets: Property<Boolean>
+
+    /**
      * Version of the `io.github.youndie.viddik:viddik-*` artifacts to add when [addDependencies] is on.
      * Defaults to the plugin's own version, which is what keeps the processor and the engine in step.
      */

@@ -6,6 +6,7 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.file.FileCollection
 import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.testing.Test
@@ -15,6 +16,7 @@ import org.gradle.language.base.plugins.LifecycleBasePlugin
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
 import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 
 /**
  * Wires viddik screenshot testing into a module.
@@ -71,6 +73,7 @@ public class ViddikPlugin : Plugin<Project> {
                 .targets
                 .withType(KotlinJvmTarget::class.java)
                 .all { jvmTarget -> target.wireSources(extension, jvmTarget.layout()) }
+            target.wireCommonRegistry(extension)
         }
         target.plugins.withId(JVM_PLUGIN_ID) {
             target.wireSources(extension, ViddikLayout.forJvm())
@@ -208,23 +211,95 @@ public class ViddikPlugin : Plugin<Project> {
     ) {
         // KSP writes the registry (and the test class) outside any source set the consumer declared,
         // so the compilation has to be told where to find it.
-        extensions
-            .getByType(KotlinProjectExtension::class.java)
-            .sourceSets
-            .getByName(layout.testSourceSetName)
-            .kotlin
-            .srcDir(layout.generatedSourceDir)
+        val testSourceSet =
+            extensions
+                .getByType(KotlinProjectExtension::class.java)
+                .sourceSets
+                .getByName(layout.testSourceSetName)
+        testSourceSet.kotlin.srcDir(layout.generatedSourceDir)
+
+        // The `showroomTargets` test class. Registered whether or not the feature is on — the task
+        // itself writes nothing when it is off — because the source directory has to be declared
+        // before the compilation is configured, and `showroomTargets` is not final until then.
+        // `srcDir` takes the provider rather than the path so Gradle knows which task fills it.
+        val generateTests =
+            tasks.register(
+                "$GENERATE_TESTS_TASK_PREFIX${layout.testSourceSetName.replaceFirstChar { it.uppercaseChar() }}",
+                ViddikGenerateTestsTask::class.java,
+            ) { task ->
+                task.description = "Writes the JUnit 5 class that runs the goldens off a commonMain registry."
+                // `this.layout` and not `layout`: the parameter of this function is the viddik one.
+                task.outputDir.set(this.layout.buildDirectory.dir("$SHOWROOM_TESTS_DIR/${layout.testSourceSetName}"))
+                task.showroomTargets.set(extension.showroomTargets)
+            }
+        testSourceSet.kotlin.srcDir(generateTests.flatMap { it.outputDir })
 
         plugins.withId(KSP_PLUGIN_ID) {
             if (generateTestsOptionApplied) return@withId
             generateTestsOptionApplied = true
-            val option = extension.generateTests.map { "$GENERATE_TESTS_OPTION=$it" }
+            // With `showroomTargets` on there is exactly one producer of the test class and it is
+            // not the processor: KSP would be running over an empty test source set and skip. Telling
+            // it `generateTests=false` is what keeps the two from both writing
+            // `GeneratedViddikTests.kt` should the consumer also leave a fixture in that source set.
+            val option =
+                extension.generateTests.zip(extension.showroomTargets) { tests, showroom ->
+                    "$GENERATE_TESTS_OPTION=${tests && !showroom}"
+                }
             // A `CommandLineArgumentProvider` rather than `arg(key, value)`: the value is read at
-            // execution time, by which point `viddik { generateTests = ... }` has been evaluated.
+            // execution time, by which point `viddik { }` has been evaluated. It is project-wide,
+            // which is why the processor works out from the platforms it is handed whether the run in
+            // front of it is the common one or a single JVM compilation.
             extensions.getByType(KspExtension::class.java).arg { listOf(option.get()) }
         }
 
         addViddikDependencies(extension, layout)
+    }
+
+    /**
+     * The `viddik { showroomTargets = true }` half: one registry, generated from `commonMain`, that
+     * every target in the module compiles — which is the only way one reaches an Android or iOS app,
+     * since a test source set is never built into one.
+     *
+     * KSP has no per-source-set options, so nothing here tells the processor to skip the JUnit 5 test
+     * class; the processor works that out from the platforms this run covers. See
+     * `ViddikProcessorProvider`.
+     */
+    private fun Project.wireCommonRegistry(extension: ViddikExtension) {
+        val sourceSets = extensions.getByType(KotlinProjectExtension::class.java).sourceSets
+        // Registered whether or not the feature is on: an srcDir that does not exist contributes no
+        // sources, and this has to be in place before any compilation is configured, which is earlier
+        // than `showroomTargets` is final.
+        sourceSets.getByName(COMMON_SOURCE_SET).kotlin.srcDir(COMMON_GENERATED_DIR)
+
+        addLater(COMMON_KSP_CONFIGURATION, extension, extension.showroomTargets) { version ->
+            listOf("${ViddikLayout.forMultiplatform("desktop", "desktopTest").coordinates.processor}:$version")
+        }
+        // The fixtures now live in commonMain, so that is where @ViddikScreenshot has to resolve, and
+        // `api` rather than `implementation` because the registry the processor writes beside them is
+        // a `List<ViddikComponent>` that the app module reads.
+        addLater(COMMON_API_CONFIGURATION, extension, extension.showroomTargets) { version ->
+            listOf("${ViddikLayout.forMultiplatform("desktop", "desktopTest").coordinates.annotations}:$version")
+        }
+
+        afterEvaluate { project ->
+            if (!extension.showroomTargets.get()) return@afterEvaluate
+            // Every compilation reads the generated registry out of commonMain, and none of them is
+            // ordered after the task that writes it — KSP wires that up per compilation, and the
+            // metadata run is not one of theirs. Without this the first build of a clean checkout
+            // fails on an unresolved `GeneratedViddikRegistry`, and the second one succeeds, which is
+            // the most confusing shape a build error comes in.
+            project.tasks.withType(KotlinCompilationTask::class.java).configureEach { task ->
+                if (task.name != COMMON_KSP_TASK) task.dependsOn(COMMON_KSP_TASK)
+            }
+            // The per-target KSP tasks need it too, and they are not Kotlin compilations. Each of them
+            // reads commonMain — that is how a fixture in commonMain is seen at all — and commonMain
+            // now contains a directory another task writes. Gradle catches this one itself and fails
+            // the build with "uses this output of task ... without declaring a dependency", so the
+            // symptom is at least loud; the ordering is real either way.
+            project.tasks
+                .matching { it.name.startsWith(KSP_TASK_PREFIX) && it.name != COMMON_KSP_TASK }
+                .configureEach { task -> task.dependsOn(COMMON_KSP_TASK) }
+        }
     }
 
     private fun Project.wireTasks(
@@ -304,10 +379,17 @@ public class ViddikPlugin : Plugin<Project> {
     private fun Project.addLater(
         configurationName: String,
         extension: ViddikExtension,
+        gate: Provider<Boolean>? = null,
         notations: (version: String) -> List<String>,
     ) {
+        val enabledProvider =
+            if (gate == null) {
+                extension.addDependencies
+            } else {
+                extension.addDependencies.zip(gate) { adding, gated -> adding && gated }
+            }
         val declared =
-            extension.addDependencies.zip(extension.viddikVersion) { enabled, version ->
+            enabledProvider.zip(extension.viddikVersion) { enabled, version ->
                 if (enabled) notations(version).map(dependencies::create) else emptyList()
             }
         configurations
@@ -369,6 +451,7 @@ public class ViddikPlugin : Plugin<Project> {
         generateTests.convention(true)
         verifyOnCheck.convention(false)
         excludeFromTestTask.convention(true)
+        showroomTargets.convention(false)
         addDependencies.convention(true)
         viddikVersion.convention(ViddikPluginVersions.viddik)
     }
@@ -389,6 +472,14 @@ public class ViddikPlugin : Plugin<Project> {
 
         const val VERIFY_PROPERTY = "viddik.verify"
         const val GENERATE_TESTS_OPTION = "viddik.generateTests"
+        const val COMMON_SOURCE_SET = "commonMain"
+        const val COMMON_API_CONFIGURATION = "commonMainApi"
+        const val COMMON_KSP_CONFIGURATION = "kspCommonMainMetadata"
+        const val COMMON_KSP_TASK = "kspCommonMainKotlinMetadata"
+        const val KSP_TASK_PREFIX = "ksp"
+        const val GENERATE_TESTS_TASK_PREFIX = "viddikGenerateTestsFor"
+        const val SHOWROOM_TESTS_DIR = "generated/viddik/tests"
+        const val COMMON_GENERATED_DIR = "build/generated/ksp/metadata/commonMain/kotlin"
         const val RECORD_MODE_ENV = "VIDDIK_RECORD_MODE"
         const val SNAPSHOTS_DIR_PROPERTY = "viddik.snapshotsDir"
         const val REPORTS_DIR_PROPERTY = "viddik.reportsDir"
