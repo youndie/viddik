@@ -317,6 +317,24 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       surface `viddik-gradle-plugin` puts on it is `--component`. Covered by `ViddikFilterTest`
       (jvmTest), which counts the returned `DynamicTest`s without ever executing them — a
       `DynamicTest` doesn't capture anything until it runs.
+  - **Design parity** (`ViddikDesignParity.kt` + `ViddikEngine.designParity` / the
+    `viddik.designParity=true` branch of `dynamicTests`). A second comparison, against a PNG exported
+    from the design the fixture was built to, in `<snapshotsDir>/design/` (`viddik.designDir`) under
+    the same `fileNameFor` name as the golden. Its own numbers — `DEFAULT_DESIGN_TOLERANCE_PERCENT =
+    5.0`, `DEFAULT_DESIGN_CHANNEL_TOLERANCE = 16`, `viddik.designTolerancePercent` /
+    `viddik.designChannelTolerance` — because the reference is drawn by another rasterizer and the
+    golden thresholds fail on anti-aliasing alone; the fixture's own `tolerancePercent` is deliberately
+    not consulted. `designParity` returns a `DesignParityResult` (MATCH / MISMATCH / SIZE_MISMATCH /
+    MISSING_REFERENCE) and never throws on a mismatch; it always writes `<name>_ACTUAL.png` and a
+    `_DIFF.png` when any pixel differs, into `<reportsDir>/design/`. The run-level branch adds one
+    trailing dynamic test, "Design parity summary", which rewrites `summary.json`/`summary.txt`
+    (`DesignParityReport` — rewritten after every fixture too, so the files exist when a strict run
+    stops early) and **fails when no fixture had a reference** — a wrong directory would otherwise be a
+    green run of nothing. Per-fixture failure only under `viddik.designStrict=true`. The parity branch
+    removes the previous run's `_ACTUAL`/`_DIFF`/`summary.*` from its report dir first, and only those
+    names. Nothing in this path writes into `designDir`, and `ViddikDesignParityTest` keeps its
+    references and its reports in two different directories for exactly that reason. Record mode is
+    ignored here.
   - `ViddikFonts.kt` — everything here is `by lazy` top-level `val`s/plain functions in `jvmMain` (not
     `jvmTest`), so any consumer can use them, not just the self-test:
     - `ViddikFontFamily` — bundled Roboto, OFL, `src/jvmMain/resources/fonts/Roboto-Variable.ttf` (a
@@ -394,12 +412,23 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
   - Task classpaths are wired in `afterEvaluate` (harmless there), but the three tasks are
     *registered* in `apply()` so a consumer can still write `tasks.named<Test>("viddikVerify") { }`
     in its own script body.
-  - Task names are `viddikVerify`/`viddikRecord`/`viddikShowroom`, not the `screenshotTest` the
+  - Task names are `viddikVerify`/`viddikRecord`/`viddikDesignParity`/`viddikShowroom`, not the `screenshotTest` the
     hand-wired consumers use — namespaced, and `screenshotTest` also collides with AGP's own
     screenshot-test source set concept in a KMP+Android module. Adopting the plugin in a consumer
     means updating its README/CI to the new names.
   - `viddikRecord` sets `VIDDIK_RECORD_MODE=true` and `outputs.upToDateWhen { false }`, which is the
     `--rerun` that used to be part of the incantation.
+  - `viddikDesignParity` is the same `ViddikScreenshotTask` type with `viddik.designParity=true`,
+    `viddik.designDir` (extension `designDir`, default `<snapshotsDir>/design`), the two design
+    tolerances, and `viddik.designStrict` = `designStrict` **or** `-Pviddik.designStrict` on the
+    command line (the `-Pviddik.verify` shape — the first real-path run on `samples/` showed the
+    extension property alone was not reachable from CI). The references are declared as an input
+    file tree, `upToDateWhen { false }` because a report that is skipped reports nothing, and a
+    `doLast` prints `<reportsDir>/design/summary.txt` — the task passes with mismatches in it, so
+    without that the numbers only exist in a file. `--component` works unchanged, since the filter
+    lives in `dynamicTests`. There is no functional test of the wiring; the check is
+    `cd samples && ../gradlew :fixtures:viddikDesignParity` with a PNG dropped into
+    `fixtures/src/desktopTest/snapshots/design/` (gitignored with the goldens).
   - `ViddikScreenshotTask` (a `Test` subclass) exists only to carry `--component`, which sets the
     engine's `viddik.filter`. Gradle's own `--tests` can't select a fixture: they're JUnit5 *dynamic*
     tests under one `GeneratedViddikTests` class and `--tests` matches classes and methods only

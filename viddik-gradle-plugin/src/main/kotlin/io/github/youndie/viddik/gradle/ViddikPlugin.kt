@@ -56,6 +56,10 @@ public class ViddikPlugin : Plugin<Project> {
             it.group = LifecycleBasePlugin.VERIFICATION_GROUP
             it.description = "Records viddik screenshot goldens, overwriting the existing ones."
         }
+        target.tasks.register(DESIGN_PARITY_TASK, ViddikScreenshotTask::class.java) {
+            it.group = LifecycleBasePlugin.VERIFICATION_GROUP
+            it.description = "Measures every fixture against its design reference PNG and writes a report."
+        }
         target.tasks.register(SHOWROOM_TASK, JavaExec::class.java) {
             it.group = "application"
             it.description = "Opens this module's viddik component browser in a window."
@@ -326,6 +330,30 @@ public class ViddikPlugin : Plugin<Project> {
             // to look unchanged — this is the `--rerun` that used to be part of the incantation.
             task.outputs.upToDateWhen { false }
         }
+        val designDir = extension.designDir.getOrElse("$snapshotsDir/$DESIGN_SUBDIR")
+        configureScreenshotTask(DESIGN_PARITY_TASK, extension, module, snapshotsDir, generateTests) { task ->
+            task.systemProperty(DESIGN_PARITY_PROPERTY, "true")
+            task.systemProperty(DESIGN_DIR_PROPERTY, designDir)
+            extension.designTolerancePercent.orNull?.let { task.systemProperty(DESIGN_TOLERANCE_PERCENT_PROPERTY, it) }
+            extension.designChannelTolerance.orNull?.let { task.systemProperty(DESIGN_CHANNEL_TOLERANCE_PROPERTY, it) }
+            // The same shape as `-Pviddik.verify`: CI turns strictness on per run without the build
+            // script having to know it is CI.
+            val strict = extension.designStrict.get() || providers.gradleProperty(DESIGN_STRICT_PROPERTY).isPresent
+            task.systemProperty(DESIGN_STRICT_PROPERTY, strict)
+            task.inputs
+                .files(fileTree(designDir) { it.include("**/*.png") })
+                .withPropertyName("viddikDesignReferences")
+                .withPathSensitivity(PathSensitivity.RELATIVE)
+            // A report is what was asked for; a run that is skipped as up to date reports nothing.
+            task.outputs.upToDateWhen { false }
+            // Unlike verify, this task passes with mismatches in it, so the console has to carry the
+            // numbers — the summary the engine writes is the only place they are all in one screen.
+            val summary =
+                file("${extension.reportsDir.getOrElse(DEFAULT_REPORTS_DIR)}/$DESIGN_SUBDIR/$DESIGN_SUMMARY_TXT")
+            task.doLast {
+                if (summary.exists()) task.logger.lifecycle(summary.readText().trimEnd())
+            }
+        }
 
         tasks.named(SHOWROOM_TASK, JavaExec::class.java).configure { task ->
             task.dependsOn(layout.testClassesTaskName)
@@ -453,6 +481,7 @@ public class ViddikPlugin : Plugin<Project> {
         excludeFromTestTask.convention(true)
         showroomTargets.convention(false)
         addDependencies.convention(true)
+        designStrict.convention(false)
         viddikVersion.convention(ViddikPluginVersions.viddik)
     }
 
@@ -460,6 +489,7 @@ public class ViddikPlugin : Plugin<Project> {
         const val EXTENSION_NAME = "viddik"
         const val VERIFY_TASK = "viddikVerify"
         const val RECORD_TASK = "viddikRecord"
+        const val DESIGN_PARITY_TASK = "viddikDesignParity"
         const val SHOWROOM_TASK = "viddikShowroom"
 
         const val KMP_PLUGIN_ID = "org.jetbrains.kotlin.multiplatform"
@@ -485,5 +515,13 @@ public class ViddikPlugin : Plugin<Project> {
         const val REPORTS_DIR_PROPERTY = "viddik.reportsDir"
         const val TOLERANCE_PERCENT_PROPERTY = "viddik.tolerancePercent"
         const val CHANNEL_TOLERANCE_PROPERTY = "viddik.channelTolerance"
+        const val DESIGN_PARITY_PROPERTY = "viddik.designParity"
+        const val DESIGN_DIR_PROPERTY = "viddik.designDir"
+        const val DESIGN_TOLERANCE_PERCENT_PROPERTY = "viddik.designTolerancePercent"
+        const val DESIGN_CHANNEL_TOLERANCE_PROPERTY = "viddik.designChannelTolerance"
+        const val DESIGN_STRICT_PROPERTY = "viddik.designStrict"
+        const val DESIGN_SUBDIR = "design"
+        const val DESIGN_SUMMARY_TXT = "summary.txt"
+        const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
     }
 }
