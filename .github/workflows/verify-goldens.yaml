@@ -5,7 +5,12 @@ name: Verify goldens
 # it is the only font backend (CoreText) that can't be reproduced on a Windows or Linux machine, and
 # macos-latest is also the only arm64 runner here — skiko ships a separate native library per
 # architecture, so that is a second axis this suite has never covered.
+# `push` on main as well, and not only `pull_request`. A green pull request was checked on its own
+# base; what lands on main is a different tree, and nothing here ever built the merge commit. Two
+# branches can each be green against the base they were cut from and disagree once both are in.
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
