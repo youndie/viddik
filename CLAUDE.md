@@ -16,7 +16,7 @@ history for the exact rename map if cross-referencing old code/docs that still s
 ## Build & Test Commands
 
 ```bash
-./gradlew build                                  # Build all 4 modules, and the whole gate: ktlint, the
+./gradlew build                                  # Build all 5 modules, and the whole gate: ktlint, the
                                                    # goldens, and both unit-test suites
 ./gradlew :viddik-testing-core:jvmTest            # Self-test suite (DemoViddik.kt) — NOT `test`, the
                                                    # module's jvm() target is unnamed so Gradle names the
@@ -25,12 +25,12 @@ history for the exact rename map if cross-referencing old code/docs that still s
 ./gradlew :viddik-processor:test                  # Fixture-metadata resolution (FixtureMetadataTest) —
                                                    # plain kotlin("jvm"), so `test`, not `jvmTest`
 ./gradlew :viddik-gradle-plugin:test              # ViddikLayoutTest, the naming fork
-./gradlew ktlintCheck                             # Style check (all 4 modules; jvmTest sourceSet in
+./gradlew ktlintCheck                             # Style check (all 5 modules; jvmTest sourceSet in
                                                    # viddik-testing-core is deliberately excluded, see
                                                    # its build.gradle.kts — KSP-generated code lives there)
 ./gradlew ktlintFormat                            # Auto-fix style violations
 ./gradlew dokkaGenerate                           # Aggregated HTML docs at build/dokka/html/index.html
-./gradlew publishToMavenLocal                     # Publish all 4 modules for local consumers to pick up
+./gradlew publishToMavenLocal                     # Publish all 5 modules for local consumers to pick up
 ./gradlew :viddik-processor:publishToMavenLocal   # Single module, e.g. after a processor-only change
 VIDDIK_RECORD_MODE=true ./gradlew :viddik-testing-core:jvmTest --tests "*runAllScreenshots*"
                                                    # Re-record the self-test golden PNGs (src/jvmTest/snapshots/).
@@ -40,17 +40,21 @@ VIDDIK_RECORD_MODE=true ./gradlew :viddik-testing-core:jvmTest --tests "*runAllS
 
 CI: `.github/workflows/verify-goldens.yaml` runs `:viddik-testing-core:jvmTest` on every pull request
 across `ubuntu-latest` / `macos-latest` / `windows-latest` (`fail-fast: false`, uploads the
-`_DIFF.png` artifacts on failure), and `publish-viddik-snapshot.yaml` publishes on push to `main`.
+`_DIFF.png` artifacts on failure), `samples.yaml` builds the consumer build — `:fixtures:viddikRecord`
+and the Android app on Linux, the iOS executable on a mac — and `publish-viddik-snapshot.yaml`
+publishes on push to `main`. A release to Maven Central is none of these: it is a dispatch of
+`central.yaml` in **youndie/sborka**, described under "Publishing" below.
 Dependencies are batched weekly by Renovate (`renovate.json5`) — Kotlin and KSP move together, and
 anything under `org.jetbrains.compose` is labelled `goldens-may-change` because it can move a pixel:
 those PRs need a re-record and a look at the diff, and the three-OS check failing on them is the
 signal working, not a flake.
 
-Downstream consumers resolve `io.github.youndie.viddik:viddik-*` via `mavenLocal()` — after any change here,
-`publishToMavenLocal` before rebuilding them. Versions are bumped by hand in
-`gradle.properties` (plain `version`, currently `0.5.0`); Gradle/consumers cache by exact version+build
-hash so a republish under the same version is picked up by build cache invalidation, not by version
-diffing — if a consumer's build looks stale after a republish, `--no-build-cache` or bump the version.
+While iterating on viddik itself, downstream consumers resolve `io.github.youndie.viddik:viddik-*` via
+`mavenLocal()` — after any change here, `publishToMavenLocal` before rebuilding them (the other two
+sources, Central and `wip`, are under "Consumers"). Versions are bumped by hand in `gradle.properties`
+(plain `version`, currently `0.5.0`); Gradle/consumers cache by exact version+build hash so a
+republish under the same version is picked up by build cache invalidation, not by version diffing —
+if a consumer's build looks stale after a republish, `--no-build-cache` or bump the version.
 
 ## Module Structure
 
@@ -770,46 +774,76 @@ so must any Android consumer of it. Its own goldens were unaffected — the comm
 against 1.11, verify byte-identical against 1.12 (checked against a deliberately corrupted golden to
 confirm the comparison was live, not vacuous).
 
-## Publishing (`buildSrc/viddik.publishing.gradle.kts`)
+## Publishing (`io.github.youndie.sborka.publish`)
 
-A precompiled script plugin (`id("viddik.publishing")`, applied by all 4 modules) generalizes the
-publishing setup instead of each module hand-rolling its own `publishing {}` block: applies
-`maven-publish`, sets `version` from the `viddik.version` Gradle property (`gradle.properties`, single
-source of truth — modules no longer hardcode their own `version = "..."`), adds `withSourcesJar()` for
-plain-`kotlin("jvm")` modules (KMP targets already publish their own sources jars per-target), and
-registers a `wip` repository at `https://reposilite.kotlin.website/snapshots`. Credentials
-(`REPOSILITE_USER`/`REPOSILITE_SECRET`) and the CI-only version override (`VERSION`) are all read via
-`findProperty(...)`, not `System.getenv(...)` directly — but CI (`.github/workflows/publish-viddik-
-snapshot.yaml`) still supplies them as plain environment variables prefixed `ORG_GRADLE_PROJECT_`
-(`ORG_GRADLE_PROJECT_REPOSILITE_USER` etc.), which Gradle auto-maps to project properties, so
-`findProperty("REPOSILITE_USER")` sees them without any extra wiring. The `VERSION` property, when
-present, overrides the version of every registered `MavenPublication` at publish time only (base
-version + build number, e.g. `0.5.0.482` — computed by the workflow's "Determine version" step) —
-`publishToMavenLocal` never sees it and always publishes the bare `version`, so local dev doesn't pollute
-`~/.m2` with one version per rebuild. `./gradlew publish` / `publishAllPublicationsToWipRepository`
-(root-level invocation runs it in every subproject that has it) pushes to `wip`; `publishToMavenLocal`
-is unaffected by any of this and always available with no credentials.
+There is no `buildSrc` any more and no `viddik.publishing` script plugin: the setup that used to live
+here is one of the shared conventions, applied by all 5 modules as `alias(libs.plugins.sborkaPublish)`.
+It applies `maven-publish`, adds a sources jar for the plain `kotlin("jvm")` modules (KMP targets
+publish their own per target), fills the POM from the `sborka.*` keys in `gradle.properties` (group,
+repository slug, description, licence, developer, inception year), and registers the `wip` repository
+at `https://reposilite.kotlin.website/snapshots`. `REPOSILITE_USER` / `REPOSILITE_SECRET` are read as
+Gradle properties; CI passes them as `ORG_GRADLE_PROJECT_*` environment variables, which Gradle maps
+to properties on its own.
 
-There is no plugin-repository dependency for `viddik.publishing` itself — `buildSrc` precompiled script
-plugins resolve purely from being present in `buildSrc/src/main/kotlin/`, no `pluginManagement`
-repository entry needed for `viddik.*` plugin IDs (this project intentionally has no private/
-authenticated plugin repository at all anymore — previously depended on a private `wip.publishing`
-plugin from the monorepo's own Reposilite instance; removed when this project was extracted so it has
-zero non-public dependencies to build). Dokka (`org.jetbrains.dokka`, aggregated at root via
-`dependencies { dokka(projects.viddikAnnotations); ... }`) and ktlint (`org.jlleitschuh.gradle.ktlint`)
-are applied per-module directly via version-catalog aliases, not through this convention plugin.
-`.editorconfig` sets `ktlint_function_naming_ignore_when_annotated_with = Composable` project-wide —
-without it, ktlint flags every PascalCase `@Composable` function name as a style violation.
+**The version is the plain `version` key** in `gradle.properties` (`0.5.0`) — `viddik.version` was one
+more name for the same thing — and `-PVERSION` wins over it when given. That is the whole difference
+between the three channels:
+
+| | version | how |
+|---|---|---|
+| `wip` snapshots | `0.5.0.<run number>` | push to `main`, `publish-viddik-snapshot.yaml` |
+| Maven Central | `0.5.0` | dispatch `central.yaml` in `youndie/sborka` |
+| `~/.m2` | `0.5.0` | `./gradlew publishToMavenLocal`, no credentials |
+
+`sborka.central=true` in `gradle.properties` is the whole of what makes the Central path possible: the
+convention reads it and applies `com.vanniktech.maven.publish`, which is what produces the javadoc jar
+and the detached signatures the portal requires. The four credentials — the portal user token and the
+signing key — live in **sborka's** repository secrets and nowhere else, which is why the release
+workflow lives there and not here: a `central.yaml` per library means a copy of the signing key per
+library, and a key rotation that is silently half done the moment one is missed. The cost, said
+plainly: the run appears in sborka's Actions tab rather than in this repository's.
+
+```bash
+gh workflow run central.yaml --repo youndie/sborka \
+  -f repository=youndie/viddik -f ref=main -f version=0.5.0 \
+  -f runner=ubuntu-latest -f konan-cache=true -f gate=true
+```
+
+The version is a Maven coordinate, without the `v`; the workflow refuses one that carries it.
+`runner=ubuntu-latest` is not a compromise — a multiplatform module publishes its root and every
+target from ONE host or the root points at variants nobody built, and Kotlin cross-compiles the Apple
+klibs a publish uploads. `gate` runs this repository's own `check` on the tree being uploaded, rather
+than trusting a tree that was green once.
+
+**The upload stages; it does not release.** The workflow calls `publishToMavenCentral` and stops.
+Somebody then reads the bundle at https://central.sonatype.com/publishing/deployments and presses
+Publish: nothing is resolvable before that click and nothing can be changed after it, because a
+version on Central can never be rewritten or taken back. The tag goes on the tree the bundle was built
+from, once it is published — `v0.4.0` was placed that way, after the fact.
+
+Dokka (`org.jetbrains.dokka`, aggregated at root via `dependencies { dokka(projects.viddikAnnotations); ... }`)
+is applied per module through the version catalog; ktlint arrives with `sborka.lint`, which pins the
+tool as well as applying the plugin. `.editorconfig` sets
+`ktlint_function_naming_ignore_when_annotated_with = Composable` project-wide — without it, ktlint
+flags every PascalCase `@Composable` function name as a style violation.
 
 ## Consumers
 
-Downstream consumers depend on `io.github.youndie.viddik:viddik-*` either through `mavenLocal()` (a fresh
-clone needs `viddik`'s `publishToMavenLocal` run manually first — there's no CI wiring to
-auto-publish `viddik` before building a consumer) or, once a version has actually been pushed to
-`wip` via the publish workflow, the public `https://reposilite.kotlin.website/snapshots` repository
-directly (no credentials needed to read) — check a given consumer's own `settings.gradle.kts` to see
-which it's currently wired for; both are legitimate depending on whether local iteration or a real
-published version is being tested against.
+Downstream consumers depend on `io.github.youndie.viddik:viddik-*` from one of three places, and which
+one a given consumer is wired for is in its own `settings.gradle.kts`:
+
+- **Maven Central**, from 0.4.0 on — a released version, no repository to declare beyond
+  `mavenCentral()` in *both* settings blocks (the plugin marker resolves out of `pluginManagement`,
+  which does not look at Central unless told to) and `google()` beside the second, for the
+  `androidx.*` artifacts Compose Multiplatform's desktop variants pull in.
+- **`wip`** (`https://reposilite.kotlin.website/snapshots`, read is anonymous) — every push to `main`
+  as `0.5.0.<run number>`. This is where a version lives while it is being tried out in a consumer
+  before it is worth a release.
+- **`mavenLocal()`** — a fresh clone needs `publishToMavenLocal` run by hand first; there is no CI
+  wiring that publishes viddik before building a consumer.
+
+All three are legitimate; they differ in whether local iteration or a published version is what is
+being tested against.
 
 Since `viddik-gradle-plugin` exists, a consumer normally applies `id("io.github.youndie.viddik")` and
 declares none of this by hand. Consumers that predate the plugin still carry the hand-rolled
