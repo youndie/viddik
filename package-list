@@ -8,5 +8,7 @@ module:viddik-gradle-plugin
 io.github.youndie.viddik.gradle
 module:viddik-processor
 io.github.youndie.viddik.processor
+module:viddik-showroom
+io.github.youndie.viddik.showroom
 module:viddik-testing-core
 io.github.youndie.viddik.core
