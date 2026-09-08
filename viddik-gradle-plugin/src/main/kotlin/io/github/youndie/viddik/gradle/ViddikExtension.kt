@@ -56,6 +56,44 @@ public interface ViddikExtension {
     public val channelTolerance: Property<Int>
 
     /**
+     * Where the design references live — PNGs exported from the design the fixtures were built to,
+     * named exactly like the goldens (`<group>_<name>.png`), relative to the module directory.
+     * Defaults to `design/` under [snapshotsDir]. Becomes the `viddik.designDir` system property.
+     *
+     * `viddikDesignParity` reads them; nothing ever writes them. A fixture without one is reported as
+     * such and is not a failure — a module rarely has a design for every state of every component.
+     */
+    public val designDir: Property<String>
+
+    /**
+     * Share of pixels allowed to differ between a fixture and its design reference before the fixture
+     * is reported as a mismatch. Unset by default, leaving viddik's own 5% — a design is drawn by a
+     * different rasterizer than Compose, so the golden threshold would fail on anti-aliasing alone.
+     * Becomes the `viddik.designTolerancePercent` system property.
+     *
+     * Separate from [tolerancePercent] on purpose: that one measures rendering noise between two runs
+     * of the same code, this one measures how far the code is from its design.
+     */
+    public val designTolerancePercent: Property<Double>
+
+    /**
+     * How far a single channel may drift before a pixel counts as different from the design. Unset by
+     * default, leaving viddik's own ±16, which is what anti-aliased edges drawn by two rasterizers
+     * measure. Becomes the `viddik.designChannelTolerance` system property.
+     */
+    public val designChannelTolerance: Property<Int>
+
+    /**
+     * Whether `viddikDesignParity` fails on a fixture outside the design tolerance. `false` by
+     * default: the task is a report, and a screen half-way to its design is the normal state of a
+     * screen being built. Turn it on where matching the design is the acceptance criterion, for good
+     * here or per run with `-Pviddik.designStrict`. Either way the run fails when no fixture had a
+     * reference at all, which is a misconfiguration and not a result. Becomes the
+     * `viddik.designStrict` system property.
+     */
+    public val designStrict: Property<Boolean>
+
+    /**
      * Whether the KSP processor generates the JUnit 5 test class alongside the component registry.
      * `true` by default; set it to `false` in a module that only wants the registry for
      * [ViddikShowroom][io.github.youndie.viddik.ViddikShowroom] — an Android app module, typically.
