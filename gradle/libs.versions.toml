@@ -15,7 +15,7 @@ dokka = "2.2.0"
 # `ktlint` is gone from this file — it named the PLUGIN version here and the TOOL version in nine
 # other repositories, which is one key meaning two things. `sborka.lint` applies the plugin and pins
 # the tool.
-sborka = "0.3.0.41"
+sborka = "0.4.0.43"
 
 [libraries]
 ui-tooling-preview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "compose-multiplatform" }
