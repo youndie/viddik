@@ -28,12 +28,33 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Where the shared catalog above is published. Filtered to the one group it serves, like
+        // every other third-party repository in this build.
+        maven("https://reposilite.kotlin.website/snapshots") {
+            name = "wip-snapshots"
+            content { includeGroupByRegex("io\\.github\\.youndie.*") }
+        }
     }
-    // The same catalog the main build uses, so the samples cannot drift onto another Compose or
+    // The same catalogs the main build uses, so the samples cannot drift onto another Compose or
     // Kotlin version and quietly stop testing what they are here to test.
+    //
+    // TWO of them now. The compiler moved to `wip`, the catalog a sborka release publishes, and
+    // this build does not get it the way the main one does: `sborka.settings` is not applied here —
+    // this file has its own `pluginManagement` with `includeBuild("..")`, which is the whole point
+    // of the separate build. So `wip` is taken as what it is, a published catalog.
+    //
+    // Its version is READ from the main catalog rather than written here. Typing 0.4.0.x twice is
+    // exactly the drift this migration removed, and it would be the more dangerous kind: the
+    // samples would keep building, on a different compiler, while claiming to test the same thing.
     versionCatalogs {
         create("libs") {
             from(files("../gradle/libs.versions.toml"))
+        }
+        create("wip") {
+            val pin = file("../gradle/libs.versions.toml").readLines()
+                .first { it.trimStart().startsWith("sborka = ") }
+                .substringAfter('"').substringBefore('"')
+            from("io.github.youndie.sborka:catalog:$pin")
         }
     }
 }

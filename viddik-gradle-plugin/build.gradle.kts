@@ -20,8 +20,8 @@ dependencies {
     // Both are `compileOnly`: the plugin is compiled against these APIs but must run against
     // whatever KGP/KSP version the consumer's build already has — KSP in particular is pinned to
     // the consumer's exact Kotlin compiler version, so shipping our own would be actively wrong.
-    compileOnly(libs.kotlin.gradle.plugin)
-    compileOnly(libs.ksp.gradle.plugin)
+    compileOnly(wip.kotlin.gradle.plugin)
+    compileOnly("com.google.devtools.ksp:symbol-processing-gradle-plugin:${wip.versions.ksp.get()}")
 
     testImplementation(kotlin("test"))
 }

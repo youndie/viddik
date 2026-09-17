@@ -7,7 +7,7 @@ plugins {
 }
 
 dependencies {
-    implementation(libs.ksp.symbol.processing.api)
+    implementation("com.google.devtools.ksp:symbol-processing-api:${wip.versions.ksp.get()}")
     implementation(libs.kotlinpoet)
     implementation(libs.kotlinpoet.ksp)
 }
