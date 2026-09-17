@@ -1,8 +1,8 @@
 plugins {
-    alias(libs.plugins.compose.multiplatform) apply false
-    alias(libs.plugins.compose.compiler) apply false
-    alias(libs.plugins.android.kotlin.multiplatform.library) apply false
-    alias(libs.plugins.ksp) apply false
+    alias(wip.plugins.composeMultiplatform) apply false
+    alias(wip.plugins.composeCompiler) apply false
+    alias(wip.plugins.androidKotlinMultiplatformLibrary) apply false
+    alias(wip.plugins.ksp) apply false
     alias(libs.plugins.dokka)
 }
 

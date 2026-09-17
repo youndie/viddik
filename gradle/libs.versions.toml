@@ -1,8 +1,4 @@
 [versions]
-kotlin = "2.4.10"
-androidGradlePlugin = "9.3.2"
-ksp = "2.3.11"
-compose-multiplatform = "1.12.0"
 compose-material3 = "1.12.0-alpha03"
 kotlinpoet = "2.3.0"
 backdrop = "2.0.1"
@@ -15,16 +11,16 @@ dokka = "2.2.0"
 # `ktlint` is gone from this file — it named the PLUGIN version here and the TOOL version in nine
 # other repositories, which is one key meaning two things. `sborka.lint` applies the plugin and pins
 # the tool.
-sborka = "0.4.0.43"
+sborka = "0.4.0.89"
+# The compiler comes with them: `wip`, the catalog a sborka release publishes, carries kotlin,
+# ksp, agp and composeMultiplatform, plus the Compose artefacts more than one repository names.
+# The three this repository is alone in needing — ui-test-junit4 and the two KSP ones — are
+# spelled in the modules that use them, against `wip.versions.*`: the shared file admits what
+# going out of step BETWEEN repositories would break, and there is nothing here to be out of
+# step with.
 
 [libraries]
-ui-tooling-preview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "compose-multiplatform" }
-compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose-multiplatform" }
-compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose-multiplatform" }
 compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-material3" }
-compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose-multiplatform" }
-ui-test = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "compose-multiplatform" }
-ui-test-junit4 = { module = "org.jetbrains.compose.ui:ui-test-junit4", version.ref = "compose-multiplatform" }
 
 # The Android showroom host only (viddik-showroom's androidMain). Kept out of viddik-annotations on
 # purpose: AndroidX activity 1.11 pulls the KMP androidx.lifecycle/savedstate artifacts, whose klibs
@@ -34,10 +30,7 @@ androidx-activity-compose = { module = "androidx.activity:activity-compose", ver
 
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 
-ksp-symbol-processing-api = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp" }
 # `compileOnly` on the Gradle plugin's classpath: the consumer's own KGP/KSP versions win at runtime.
-kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
-ksp-gradle-plugin = { module = "com.google.devtools.ksp:symbol-processing-gradle-plugin", version.ref = "ksp" }
 kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
 kotlinpoet-ksp = { module = "com.squareup:kotlinpoet-ksp", version.ref = "kotlinpoet" }
 
@@ -55,12 +48,5 @@ sborkaKmp = { id = "io.github.youndie.sborka.kmp", version.ref = "sborka" }
 sborkaJvm = { id = "io.github.youndie.sborka.jvm", version.ref = "sborka" }
 sborkaLint = { id = "io.github.youndie.sborka.lint", version.ref = "sborka" }
 sborkaPublish = { id = "io.github.youndie.sborka.publish", version.ref = "sborka" }
-android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "androidGradlePlugin" }
 # The samples build only: an Android *application* is not a KMP module, so it takes the plain pair.
-android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
-compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
-compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }

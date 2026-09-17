@@ -42,11 +42,11 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(libs.compose.runtime)
-            implementation(libs.compose.ui)
-            implementation(libs.compose.foundation)
+            implementation(wip.compose.runtime)
+            implementation(wip.compose.ui)
+            implementation(wip.compose.foundation)
             implementation(libs.compose.material3)
-            implementation(libs.ui.tooling.preview)
+            implementation(wip.compose.ui.tooling.preview)
             // The entry points. `viddik-annotations` arrives through it, and so does the registry's
             // ViddikComponent type; the plugin adds it to commonMain as well because
             // `showroomTargets` is on.

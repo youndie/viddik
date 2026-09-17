@@ -1,8 +1,8 @@
 plugins {
     kotlin("multiplatform")
-    alias(libs.plugins.compose.multiplatform)
-    alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.ksp)
+    alias(wip.plugins.composeMultiplatform)
+    alias(wip.plugins.composeCompiler)
+    alias(wip.plugins.ksp)
     alias(libs.plugins.dokka)
     alias(libs.plugins.sborkaKmp)
     alias(libs.plugins.sborkaLint)
@@ -16,12 +16,12 @@ kotlin {
         val jvmMain by getting {
             dependencies {
                 implementation(projects.viddikAnnotations)
-                implementation(libs.compose.ui)
+                implementation(wip.compose.ui)
                 // ViddikTypography() (ViddikFonts.kt) builds a Material3 Typography — the only reason
                 // this module has an opinion on Material3 at all, everything else here is design-
                 // system-agnostic.
                 implementation(libs.compose.material3)
-                api(libs.ui.test)
+                api(wip.compose.ui.test)
                 // `common` AND NOT `currentOs`, and the difference only shows up in the POM.
                 // `compose.desktop.currentOs` resolves to the machine that ran the build —
                 // `desktop-jvm-macos-arm64` here — and publishing it puts that machine's skiko
@@ -40,7 +40,7 @@ kotlin {
             dependencies {
                 implementation(libs.junit.jupiter.engine)
                 implementation(libs.junit.platform.launcher)
-                implementation(libs.ui.tooling.preview)
+                implementation(wip.compose.ui.tooling.preview)
                 implementation(libs.backdrop)
                 // The host's skiko, for the source set that actually renders. Nothing published
                 // carries it, so this is where it has to be — the same line every consumer writes.

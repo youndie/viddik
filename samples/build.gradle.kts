@@ -3,10 +3,10 @@
 // classpath with an unknown version"), which is what two modules asking for Kotlin at a version look
 // like from inside a build.
 plugins {
-    alias(libs.plugins.kotlin.multiplatform) apply false
-    alias(libs.plugins.android.application) apply false
-    alias(libs.plugins.android.kotlin.multiplatform.library) apply false
-    alias(libs.plugins.compose.multiplatform) apply false
-    alias(libs.plugins.compose.compiler) apply false
-    alias(libs.plugins.ksp) apply false
+    alias(wip.plugins.kotlinMultiplatform) apply false
+    alias(wip.plugins.androidApplication) apply false
+    alias(wip.plugins.androidKotlinMultiplatformLibrary) apply false
+    alias(wip.plugins.composeMultiplatform) apply false
+    alias(wip.plugins.composeCompiler) apply false
+    alias(wip.plugins.ksp) apply false
 }

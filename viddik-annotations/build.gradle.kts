@@ -1,8 +1,8 @@
 plugins {
     kotlin("multiplatform")
-    alias(libs.plugins.compose.multiplatform)
-    alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.android.kotlin.multiplatform.library)
+    alias(wip.plugins.composeMultiplatform)
+    alias(wip.plugins.composeCompiler)
+    alias(wip.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.dokka)
     alias(libs.plugins.sborkaKmp)
     alias(libs.plugins.sborkaLint)
@@ -37,9 +37,9 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(libs.compose.runtime)
-            implementation(libs.compose.ui)
-            implementation(libs.compose.foundation)
+            implementation(wip.compose.runtime)
+            implementation(wip.compose.ui)
+            implementation(wip.compose.foundation)
             implementation(libs.compose.material3)
         }
 
