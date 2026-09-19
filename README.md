@@ -61,7 +61,7 @@ That's the whole setup. The plugin adds the dependencies, puts the processor on 
 configuration, registers the generated-source directory, and gives you the tasks:
 
 ```bash
-./gradlew :yourModule:viddikRecord       # write the goldens
+./gradlew :yourModule:viddikRecord       # write the goldens a verification would reject
 ./gradlew :yourModule:viddikVerify       # compare against them
 ./gradlew :yourModule:viddikDesignParity # measure every fixture against its design PNG
 ./gradlew :yourModule:viddikShowroom     # open the component browser in a window
@@ -275,8 +275,8 @@ This shows up two ways, from the exact same fixture — no duplication between "
 thing a developer clicks through":
 
 ```bash
-# Record every golden in the module (writes src/<test source set>/snapshots/*.png — verify them
-# visually, record mode doesn't validate anything)
+# Record (writes src/<test source set>/snapshots/*.png for the fixtures whose render the
+# verification would reject — verify those visually, recording doesn't validate anything)
 ./gradlew :yourModule:viddikRecord
 
 # Verify (compares against the recorded goldens, fails with a saved _DIFF.png on mismatch)
@@ -286,12 +286,29 @@ thing a developer clicks through":
 ./gradlew :yourModule:viddikShowroom
 ```
 
+**Recording leaves alone what the verification accepts.** It renders every selected fixture, compares
+the render with the golden through the same differ and the same thresholds `viddikVerify` uses, and
+writes only where that comparison fails. So a record on an unchanged tree writes nothing, and what it
+leaves in `git status` is what actually moved — which matters most where the goldens are in Git LFS
+and every rewritten file is another blob in the history. The run says which of the two happened:
+
+```
+viddik record: wrote 2 golden(s), kept 746 the verification already accepts. Written: Buttons - Primary, Buttons - Primary Dark
+```
+
+`--force` writes every selected golden regardless, which is what a re-record after a Compose, font or
+renderer bump wants — there "would the old comparison accept this" is not the question:
+
+```bash
+./gradlew :yourModule:viddikRecord --force
+```
+
 To work on one component, use `--component` — Gradle's own `--tests` can't help here, since every
 fixture is a JUnit5 **dynamic** test under a single `GeneratedViddikTests` class and `--tests` only
 matches classes and methods:
 
 ```bash
-./gradlew :yourModule:viddikRecord --component "Buttons - Primary"  # rewrites one golden
+./gradlew :yourModule:viddikRecord --component "Buttons - Primary"  # records one fixture
 ./gradlew :yourModule:viddikVerify --component Primary              # bare substring
 ./gradlew :yourModule:viddikVerify --component "Buttons*Dark"       # * and ? are wildcards
 ```
@@ -301,8 +318,9 @@ A pattern that matches nothing fails the task and lists what the module does hav
 reporting a green run of zero screenshots.
 
 Without the plugin, recording is the `VIDDIK_RECORD_MODE` environment variable on whatever test task
-runs the generated class (`VIDDIK_RECORD_MODE=true ./gradlew :yourModule:test --rerun`), and the
-browser is a `fun main()` you write yourself:
+runs the generated class (`VIDDIK_RECORD_MODE=true ./gradlew :yourModule:test --rerun`), with
+`-Dviddik.forceRecord=true` for what `--force` does, and the browser is a `fun main()` you write
+yourself:
 
 ```kotlin
 fun main() = application {
@@ -522,7 +540,8 @@ text renders differently per machine — draw the icon as an icon, or bundle a f
 (`ImageDiffer.DEFAULT_TOLERANCE_PERCENT`) with a ±2 per-channel allowance. For scale: adding one
 character to a button label moves 1.32% of the pixels, so this is a strict check, not a loose one.
 Override per call via `tolerancePercent`, or globally via the `viddik.tolerancePercent` system
-property.
+property. The same three numbers decide what recording writes — a golden this comparison accepts is
+one `viddikRecord` leaves on disk, unless `--force` says otherwise.
 
 #### One fixture that can't hold the strict number
 
