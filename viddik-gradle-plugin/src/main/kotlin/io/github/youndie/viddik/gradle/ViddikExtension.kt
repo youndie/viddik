@@ -94,6 +94,22 @@ public interface ViddikExtension {
     public val designStrict: Property<Boolean>
 
     /**
+     * Whether the run serves every capture from one shared scene instead of standing a scene up per
+     * fixture. Unset by default. Becomes the `viddik.sceneReuse` system property.
+     *
+     * Standing a scene up is most of what a capture costs — an *empty* capture measured 11.7 ms
+     * against a median fixture's 12.1 ms — so sharing one takes a suite of same-sized fixtures from
+     * ~13 ms per capture to ~6 ms. The scene is reopened whenever the next fixture has a different
+     * canvas, because a `Dialog` centres itself in the window; a suite whose sizes alternate every
+     * fixture therefore gains nothing, and one whose fixtures share a size gains the most.
+     *
+     * Two constraints come with it: the run must not contain other Compose tests that stand up a
+     * harness of their own (a shared scene cannot share a JVM with one), and the fixtures are
+     * visited in size order rather than registry order.
+     */
+    public val sceneReuse: Property<Boolean>
+
+    /**
      * Whether a capture refuses to photograph text the font cannot draw, instead of letting the host
      * draw it. Unset by default. Becomes the `viddik.glyphCheck` system property.
      *

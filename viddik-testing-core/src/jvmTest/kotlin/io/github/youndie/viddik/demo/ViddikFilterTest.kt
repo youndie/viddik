@@ -1,6 +1,7 @@
 package io.github.youndie.viddik.demo
 
 import io.github.youndie.viddik.annotations.ViddikComponent
+import io.github.youndie.viddik.core.CAPTURE_SESSION_TEST_NAME
 import io.github.youndie.viddik.core.RECORD_SUMMARY_TEST_NAME
 import io.github.youndie.viddik.core.ViddikEngine
 import org.junit.jupiter.api.AfterEach
@@ -98,7 +99,7 @@ class ViddikFilterTest {
         ViddikEngine
             .dynamicTests(components)
             .map { it.displayName }
-            .filterNot { it == RECORD_SUMMARY_TEST_NAME }
+            .filterNot { it == RECORD_SUMMARY_TEST_NAME || it == CAPTURE_SESSION_TEST_NAME }
 
     private fun component(
         group: String,

@@ -21,6 +21,9 @@ private const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
 /** The run-level entry a recording run appends to its fixtures; see [ViddikEngine.recordTests]. */
 internal const val RECORD_SUMMARY_TEST_NAME: String = "Record summary"
 
+/** The run-level entry that ends a reused scene; see [ViddikEngine.dynamicTests]. */
+internal const val CAPTURE_SESSION_TEST_NAME: String = "Capture session"
+
 /**
  * What a recording run did with each fixture it rendered, so the run can say it once at the end
  * rather than a line per fixture.
@@ -326,11 +329,37 @@ public object ViddikEngine {
             )
         }
 
-        if (designParityMode) return designParityTests(selected, components)
-        if (recordMode) return recordTests(selected)
+        // A shared scene lives at one canvas size and has to be reopened for another (a Dialog
+        // centres itself in the window, so the window must match the fixture). Visiting the sizes
+        // in order turns one reopening per fixture into one per distinct size; without it this
+        // repository's own suite, whose sizes alternate, gains nothing at all.
+        // Goldens do not depend on the order — that is what ViddikSceneReuseTest is for.
+        val ordered = if (sceneReuseEnabled) selected.sortedWith(bySize) else selected
 
-        return selected.map { component ->
-            DynamicTest.dynamicTest(displayNameFor(component)) { verify(component) }
+        val tests =
+            when {
+                designParityMode -> {
+                    designParityTests(ordered, components)
+                }
+
+                recordMode -> {
+                    recordTests(selected)
+                }
+
+                else -> {
+                    selected.map { component ->
+                        DynamicTest.dynamicTest(displayNameFor(component)) { verify(component) }
+                    }
+                }
+            }
+
+        // A reused scene outlives the fixtures by construction, so somebody has to end it: the
+        // harness holds threads of its own, and a test JVM that will not exit is worse than a slow
+        // one. Last in the list, after the record or design-parity summary.
+        return if (sceneReuseEnabled) {
+            tests + DynamicTest.dynamicTest(CAPTURE_SESSION_TEST_NAME) { closeCaptureSession() }
+        } else {
+            tests
         }
     }
 
@@ -423,6 +452,14 @@ public object ViddikEngine {
             }
         return perFixture + summary
     }
+
+    /** Width, then canvas height, then name, so a run visits each scene size once. */
+    private val bySize =
+        compareBy<ViddikComponent>(
+            { it.width },
+            { CaptureRequest.canvasHeightOf(it.height) },
+            { displayNameFor(it) },
+        )
 
     private fun displayNameFor(component: ViddikComponent): String = "${component.group} - ${component.name}"
 

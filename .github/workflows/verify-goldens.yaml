@@ -40,6 +40,17 @@ jobs:
       - name: Verify goldens
         run: ${{ runner.os == 'Windows' && '.\gradlew.bat' || './gradlew' }} :viddik-testing-core:jvmTest --no-daemon
 
+      # The same goldens, captured through one shared scene instead of a scene per fixture
+      # (`viddik.sceneReuse`, off by default). The flag only earns its place while the two paths
+      # produce the same pixels, and the fixture that decides it is a Dialog: it centres itself in
+      # the window, so it was 49-56% different until the shared scene started matching the window to
+      # each fixture's canvas. Generated tests only — a shared scene cannot share a JVM with another
+      # Compose harness, which this module's other tests create.
+      - name: Verify goldens through a shared scene
+        run: >-
+          ${{ runner.os == 'Windows' && '.\gradlew.bat' || './gradlew' }}
+          :viddik-testing-core:jvmTest --no-daemon --rerun -PsceneReuse=true --tests "*GeneratedViddikTests*"
+
       - name: Upload diffs
         if: failure()
         uses: actions/upload-artifact@v4
