@@ -259,9 +259,14 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     via `runDesktopComposeUiTest`. Requires `Dispatchers.setMain(UnconfinedTestDispatcher())` before
     composing (Compose Desktop UI tests don't auto-install a Main dispatcher the way Android
     instrumented/Robolectric tests do; anything using `collectAsStateWithLifecycle` or similar throws
-    without it). `height == AUTO_HEIGHT` renders into a tall fixed canvas (`MAX_AUTO_HEIGHT_CANVAS =
+    without it). `height == AUTO_HEIGHT` lays out in a tall fixed canvas (`MAX_AUTO_HEIGHT_CANVAS =
     4000px`), measures actual content height via `onGloballyPositioned`, and crops the final image —
-    avoids hand-picking a `height = 680`-style magic number per fixture. Content that opens
+    avoids hand-picking a `height = 680`-style magic number per fixture. The *scene* is that tall;
+    the raster surface is not. It is created at the measured height (issue #31), because everything
+    below it was encoded to PNG and decoded back only to be cropped away: 1.6 Mpx per capture to keep
+    0.02 Mpx. Measured on this suite, 1353 ms of capture time became 764 ms with all 28 goldens
+    byte-identical. A dialog capture is the exception and keeps the full canvas — it is centred in
+    the window, and auto-height does not measure it reliably anyway. Content that opens
     `Dialog`/`Popup` produces a second semantics root — `onRoot()` throws `"Expected exactly '1' node
     but found '2'"` in that case, so the engine checks `onAllNodes(isRoot())` first and falls back to
     `onNode(isDialog())` for both the capture and the measured height. Auto-height is NOT reliable for

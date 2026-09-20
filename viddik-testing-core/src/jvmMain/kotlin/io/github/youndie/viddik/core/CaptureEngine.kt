@@ -75,12 +75,7 @@ public fun captureComposable(
             }
             waitForIdle()
 
-            // Render the scene ourselves, into a canvas carrying the perspective nudge, instead of
-            // captureToImage() on a node: a matrix on the scene's canvas reaches every layer of it,
-            // including Dialog/Popup, which Compose renders into their own roots — a modifier on the
-            // content node never reached those.
             val scene = (this as SkikoComposeUiTest).scene
-            val rendered = renderSceneWithPerspective(scene, width, canvasHeight)
 
             val roots = onAllNodes(isRoot()).fetchSemanticsNodes()
             // A second root means a Dialog or a Popup. Only a dialog is worth cropping to: it is a
@@ -89,8 +84,34 @@ public fun captureComposable(
             // is anchored to, so the whole scene is the capture. Asking for a dialog node
             // unconditionally is what this used to do, and it failed every popup fixture outright with
             // a message about dialogs (found by the Canary/Popup fixture).
+            //
+            // Read before the render rather than after it, because the answer decides how tall a
+            // surface the render needs.
             val dialogNodes = onAllNodes(isDialog()).fetchSemanticsNodes()
-            if (roots.size <= 1 || dialogNodes.isEmpty()) {
+            val dialogCapture = roots.size > 1 && dialogNodes.isNotEmpty()
+
+            // An auto-height capture keeps `measuredHeightPx` of what it draws and throws the rest
+            // away (the crop below), so that is all the surface has to be. The *scene* stays at
+            // `canvasHeight`, so nothing about the layout changes — only the raster target, and with
+            // it the PNG encode and the decode back, which is where the time was going: measured on
+            // this repository's suite, 1353 ms of capture time became 764 ms, with all 28 goldens
+            // byte-identical (issue #31). A dialog is the exception and keeps the whole canvas: it is
+            // centred in the window rather than laid out from the top, and auto-height does not
+            // measure it reliably in the first place.
+            val surfaceHeight =
+                if (autoHeight && !dialogCapture) {
+                    measuredHeightPx.coerceIn(1, canvasHeight)
+                } else {
+                    canvasHeight
+                }
+
+            // Render the scene ourselves, into a canvas carrying the perspective nudge, instead of
+            // captureToImage() on a node: a matrix on the scene's canvas reaches every layer of it,
+            // including Dialog/Popup, which Compose renders into their own roots — a modifier on the
+            // content node never reached those.
+            val rendered = renderSceneWithPerspective(scene, width, surfaceHeight)
+
+            if (!dialogCapture) {
                 captured = rendered
             } else {
                 // The dialog is drawn on top of the scene — crop it out by its semantics bounds.
