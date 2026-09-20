@@ -22,12 +22,22 @@ public const val DEFAULT_CHANNEL_TOLERANCE: Int = 2
 // the big one fails the small one for no reason. Whichever bound is more generous wins.
 public const val DEFAULT_MIN_MISMATCHED_PIXELS: Int = 16
 
-public data class DiffResult(
-    val diffImage: BufferedImage,
-    val mismatchedPixels: Int,
-    val totalPixels: Int,
+public class DiffResult internal constructor(
+    public val mismatchedPixels: Int,
+    public val totalPixels: Int,
+    private val lazyDiffImage: Lazy<BufferedImage>,
 ) {
-    val mismatchPercent: Double get() = if (totalPixels == 0) 0.0 else mismatchedPixels * 100.0 / totalPixels
+    /**
+     * The comparison as a picture — every mismatched (or out-of-bounds) pixel solid red, the rest as
+     * rendered — built on first read and not before.
+     *
+     * A comparison that matches never asks for it, and that is nearly all of them: a passing
+     * verification, and since #29 every fixture a recording decides to keep. Painting a full image
+     * per fixture in order to drop it was most of what the differ spent.
+     */
+    public val diffImage: BufferedImage get() = lazyDiffImage.value
+
+    public val mismatchPercent: Double get() = if (totalPixels == 0) 0.0 else mismatchedPixels * 100.0 / totalPixels
 
     public fun matches(
         tolerancePercent: Double = DEFAULT_TOLERANCE_PERCENT,
@@ -45,27 +55,98 @@ public object ImageDiffer {
     ): DiffResult {
         val width = maxOf(expected.width, actual.width)
         val height = maxOf(expected.height, actual.height)
-        val diffImage = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
-        var mismatched = 0
+        val expectedPixels = Pixels(expected)
+        val actualPixels = Pixels(actual)
 
+        // The whole answer for a comparison that matches exactly, without reading a pixel twice. It
+        // is the common case by a wide margin: on one host two renders of the same code are
+        // byte-identical, and across OSes 8 of this repository's 10 goldens are.
+        if (expectedPixels.sameShapeAs(actualPixels) && expectedPixels.contentEquals(actualPixels)) {
+            return DiffResult(
+                mismatchedPixels = 0,
+                totalPixels = width * height,
+                lazyDiffImage = lazy { paint(expectedPixels, actualPixels, width, height, channelTolerance) },
+            )
+        }
+
+        var mismatched = 0
         for (y in 0 until height) {
             for (x in 0 until width) {
-                val inExpected = x < expected.width && y < expected.height
-                val inActual = x < actual.width && y < actual.height
-                val same =
-                    inExpected &&
-                        inActual &&
-                        pixelsMatch(expected.getRGB(x, y), actual.getRGB(x, y), channelTolerance)
-                if (same) {
-                    diffImage.setRGB(x, y, actual.getRGB(x, y))
-                } else {
-                    mismatched++
-                    diffImage.setRGB(x, y, RED_MASK)
-                }
+                if (!samePixel(expectedPixels, actualPixels, x, y, channelTolerance)) mismatched++
             }
         }
 
-        return DiffResult(diffImage, mismatched, width * height)
+        return DiffResult(
+            mismatchedPixels = mismatched,
+            totalPixels = width * height,
+            lazyDiffImage = lazy { paint(expectedPixels, actualPixels, width, height, channelTolerance) },
+        )
+    }
+
+    /**
+     * One bulk read of an image, so the comparison is int arithmetic from there on.
+     *
+     * A golden arrives from `ImageIO.read` as `TYPE_4BYTE_ABGR`, which means every `getRGB(x, y)`
+     * went through its `ColorModel` — twice per pixel, in the innermost loop.
+     */
+    private class Pixels(
+        image: BufferedImage,
+    ) {
+        val width: Int = image.width
+        val height: Int = image.height
+        private val data: IntArray = image.getRGB(0, 0, width, height, null, 0, width)
+
+        fun contains(
+            x: Int,
+            y: Int,
+        ): Boolean = x < width && y < height
+
+        fun at(
+            x: Int,
+            y: Int,
+        ): Int = data[y * width + x]
+
+        fun sameShapeAs(other: Pixels): Boolean = width == other.width && height == other.height
+
+        fun contentEquals(other: Pixels): Boolean = data.contentEquals(other.data)
+    }
+
+    /**
+     * A pixel one image has and the other does not counts as mismatched, which is what makes a
+     * fixture that changed size fail loudly instead of being quietly compared on the overlap.
+     */
+    private fun samePixel(
+        expected: Pixels,
+        actual: Pixels,
+        x: Int,
+        y: Int,
+        channelTolerance: Int,
+    ): Boolean =
+        expected.contains(x, y) &&
+            actual.contains(x, y) &&
+            pixelsMatch(expected.at(x, y), actual.at(x, y), channelTolerance)
+
+    private fun paint(
+        expected: Pixels,
+        actual: Pixels,
+        width: Int,
+        height: Int,
+        channelTolerance: Int,
+    ): BufferedImage {
+        val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+        val row = IntArray(width)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                row[x] =
+                    if (samePixel(expected, actual, x, y, channelTolerance)) {
+                        actual.at(x, y)
+                    } else {
+                        RED_MASK
+                    }
+            }
+            image.setRGB(0, y, width, 1, row, 0, width)
+        }
+        return image
     }
 
     private fun pixelsMatch(
@@ -73,12 +154,20 @@ public object ImageDiffer {
         actual: Int,
         channelTolerance: Int,
     ): Boolean {
-        if (channelTolerance <= 0) return expected == actual
-        for (shift in intArrayOf(24, 16, 8, 0)) {
-            val e = (expected shr shift) and 0xFF
-            val a = (actual shr shift) and 0xFF
-            if (abs(e - a) > channelTolerance) return false
-        }
-        return true
+        if (expected == actual) return true
+        if (channelTolerance <= 0) return false
+        // Spelled out rather than looped over `intArrayOf(24, 16, 8, 0)`, which allocated that array
+        // per pixel inside the hottest loop this library has.
+        return channelWithin(expected, actual, 24, channelTolerance) &&
+            channelWithin(expected, actual, 16, channelTolerance) &&
+            channelWithin(expected, actual, 8, channelTolerance) &&
+            channelWithin(expected, actual, 0, channelTolerance)
     }
+
+    private fun channelWithin(
+        expected: Int,
+        actual: Int,
+        shift: Int,
+        tolerance: Int,
+    ): Boolean = abs(((expected shr shift) and 0xFF) - ((actual shr shift) and 0xFF)) <= tolerance
 }
