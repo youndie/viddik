@@ -68,6 +68,11 @@ internal class CaptureRequest(
 
     /** What the scene is laid out in; the surface it is drawn into can be shorter (issue #31). */
     val canvasHeight: Int = if (autoHeight) MAX_AUTO_HEIGHT_CANVAS else height
+
+    internal companion object {
+        /** The canvas a component will be laid out in, without building a request for it. */
+        fun canvasHeightOf(height: Int): Int = if (height == AUTO_HEIGHT) MAX_AUTO_HEIGHT_CANVAS else height
+    }
 }
 
 /** A scene of its own, torn down afterwards — what every capture did before `viddik.sceneReuse`. */
@@ -125,12 +130,8 @@ private fun SkikoComposeUiTest.capture(
     if (throughHarness) {
         setContent(fixture)
     } else {
-        // Empty content first, driven to idle: a Dialog or a Popup is a root of its own inside the
-        // scene, and swapping straight from one fixture to the next leaves the previous one's extra
-        // roots in place — measured as Canary/Dialog differing by 55.9% of its pixels.
-        scene.setContent(content = {})
-        waitForIdle()
-        scene.size = IntSize(request.width, request.canvasHeight)
+        // The window this scene lives in was opened at exactly this fixture's canvas, so there is
+        // nothing to resize — see CaptureSession.start for why that matters.
         scene.setContent(content = fixture)
     }
     waitForIdle()
@@ -248,32 +249,28 @@ private object CaptureSession {
         val answer: ArrayBlockingQueue<Result<BufferedImage>> = ArrayBlockingQueue(1)
     }
 
-    private val jobs = LinkedBlockingQueue<Job>()
+    private val lock = Any()
+    private var jobs = LinkedBlockingQueue<Job>()
+    private var worker: Thread? = null
+    private var windowSize: IntSize? = null
 
     /**
      * What killed the scene, if anything did.
      *
-     * Without this the first version of this class deadlocked: the worker thread died inside the
-     * harness, nothing answered, and every caller waited forever on a queue — a silent hang with no
-     * stack trace anywhere, because an uncaught exception on a daemon thread goes to a stderr that
-     * the test runner had already taken over.
+     * Without this the first version deadlocked: the worker died inside the harness, nothing
+     * answered, and every caller waited forever — a silent hang with no stack trace anywhere,
+     * because an uncaught exception on a daemon thread goes to a stderr the test runner has taken
+     * over.
      */
     @Volatile
     private var fatal: Throwable? = null
 
-    private val worker: Thread by lazy {
-        Runtime.getRuntime().addShutdownHook(Thread({ close() }, "viddik-capture-close"))
-        Thread({ serve() }, "viddik-capture").apply {
-            isDaemon = true
-            start()
-        }
-    }
-
     fun capture(request: CaptureRequest): BufferedImage {
-        worker
-        fatal?.let { throw IllegalStateException("The shared capture scene is not running", it) }
         val job = Job(request)
-        jobs.put(job)
+        synchronized(lock) {
+            start(IntSize(request.width, request.canvasHeight))
+            jobs.put(job)
+        }
         val answer =
             job.answer.poll(ANSWER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 ?: throw IllegalStateException(
@@ -285,19 +282,60 @@ private object CaptureSession {
     }
 
     /**
+     * Opens a scene for [size], reopening if the live one has another.
+     *
+     * The window has to match the fixture's canvas, and that is not a detail: a `Dialog` centres
+     * itself in the *window*, not in the scene, so a dialog photographed in a window of the wrong
+     * size is a different picture — measured at 49–56% of its pixels before this, and byte-identical
+     * to a fresh capture after it. Sizes cluster in practice (a group of fixtures shares one), so a
+     * run reopens a handful of times; a run that alternates sizes every fixture degenerates to one
+     * scene per capture, which is exactly what it costs today.
+     */
+    private fun start(size: IntSize) {
+        if (worker != null && windowSize == size && fatal == null) return
+        stop()
+        fatal = null
+        jobs = LinkedBlockingQueue()
+        windowSize = size
+        worker =
+            Thread({ serve(size) }, "viddik-capture").apply {
+                isDaemon = true
+                start()
+            }
+        registerShutdownHook()
+    }
+
+    private fun stop() {
+        val running = worker ?: return
+        val pill = Job(null)
+        jobs.put(pill)
+        pill.answer.poll(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        running.join(CLOSE_TIMEOUT_SECONDS * MILLIS_PER_SECOND)
+        worker = null
+        windowSize = null
+    }
+
+    /**
      * Ends the run's scene. Called by the trailing dynamic test of a reusing run, and by a shutdown
      * hook for anyone calling [captureComposable] directly — a scene left open holds the harness's
      * own threads, and a test JVM that will not exit is worse than a slow one.
      */
     fun close() {
-        val stop = Job(null)
-        jobs.put(stop)
-        stop.answer.poll(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        synchronized(lock) { stop() }
     }
 
-    private fun serve() {
+    private fun registerShutdownHook() {
+        if (shutdownHookRegistered) return
+        shutdownHookRegistered = true
+        Runtime.getRuntime().addShutdownHook(Thread({ close() }, "viddik-capture-close"))
+    }
+
+    @Volatile
+    private var shutdownHookRegistered = false
+
+    private fun serve(size: IntSize) {
         try {
-            runScene()
+            runScene(size)
         } catch (failure: Throwable) {
             fatal = failure
             // Everyone waiting, and everyone who arrives later, gets the reason rather than silence.
@@ -306,17 +344,19 @@ private object CaptureSession {
     }
 
     @OptIn(ExperimentalTestApi::class)
-    private fun runScene() {
+    private fun runScene(size: IntSize) {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         try {
-            runDesktopComposeUiTest(width = DEFAULT_WIDTH, height = 1) {
+            runDesktopComposeUiTest(width = size.width, height = size.height) {
                 val harness = this as SkikoComposeUiTest
+                // Empty content through the harness once, so that no fixture is the special one:
+                // every fixture then arrives the same way, through ComposeScene.setContent.
                 harness.setContent { }
                 while (true) {
                     val job = jobs.take()
                     val request = job.request
                     if (request == null) {
-                        job.answer.put(Result.failure(IllegalStateException("closed")))
+                        job.answer.offer(Result.failure(IllegalStateException("closed")))
                         return@runDesktopComposeUiTest
                     }
                     job.answer.put(runCatching { harness.capture(request, throughHarness = false) })
@@ -329,6 +369,7 @@ private object CaptureSession {
 
     private const val CLOSE_TIMEOUT_SECONDS = 10L
     private const val ANSWER_TIMEOUT_SECONDS = 120L
+    private const val MILLIS_PER_SECOND = 1000L
 }
 
 /** Ends the shared scene, if one was ever opened. Safe to call when reuse is off. */

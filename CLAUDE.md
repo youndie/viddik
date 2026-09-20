@@ -22,6 +22,13 @@ history for the exact rename map if cross-referencing old code/docs that still s
                                                    # module's jvm() target is unnamed so Gradle names the
                                                    # task jvmTest, not test (that only applies to plain
                                                    # kotlin("jvm") consumer modules like dev:uikit-sandbox)
+./gradlew :viddik-testing-core:jvmTest -PsceneReuse=true --tests "*GeneratedViddikTests*"
+                                                   # The same goldens through one shared scene (#40).
+                                                   # Generated tests only: a shared scene cannot share
+                                                   # a JVM with another Compose harness.
+./gradlew :viddik-testing-core:jvmTest -Pfilter="Canary - Dialog"
+                                                   # One fixture of the self-test suite; the consumer-
+                                                   # facing spelling of this is the plugin's --component
 ./gradlew :viddik-processor:test                  # Fixture-metadata resolution (FixtureMetadataTest) —
                                                    # plain kotlin("jvm"), so `test`, not `jvmTest`
 ./gradlew :viddik-gradle-plugin:test              # ViddikLayoutTest, the naming fork
@@ -306,6 +313,31 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     `VIDDIK_RECORD_MODE`, which turns every verify into a write). Two demo fixtures carry
     `tolerancePercent = 0.2` purely so the codegen path is live in this repo's own suite — their
     goldens do not need it.
+  - **Scene reuse** (`viddik.sceneReuse`, the plugin's `sceneReuse`, off by default — issue #40).
+    One `runDesktopComposeUiTest` is held open on a thread of its own (`CaptureSession`) and serves
+    captures from a queue, instead of standing a scene up per fixture. Measured: 403 same-sized
+    fixtures go from 13.3 to 5.7 ms per capture; this repo's own mixed-size suite from 22.4 to
+    13.4 ms. Four things were paid for on the way and must not be undone:
+    - **The window has to match the fixture's canvas.** A `Dialog` centres itself in the *window*,
+      not in the scene, so `Canary/Dialog` came out 49–56% different while the session kept one
+      window and only resized `ComposeScene.size`. The session therefore closes and reopens whenever
+      the next fixture has another canvas — and `dynamicTests` sorts fixtures by size under reuse,
+      or a suite whose sizes alternate reopens per fixture and gains nothing (measured: 15.5 s
+      against 15.0 s before sorting).
+    - **Only one Compose harness per JVM.** A run mixing own-scene captures with the shared one
+      wedges — the same constraint #35 measured from the parallel side. That is why the CI step and
+      the `-PsceneReuse=true` switch run `--tests "*GeneratedViddikTests*"` only: this module's other
+      tests stand up harnesses of their own.
+    - **The session must fail loudly.** The first version deadlocked silently: the worker died inside
+      the harness, nothing answered, callers blocked forever, and an uncaught exception on a daemon
+      thread goes to a stderr the test runner has taken over. It now records the failure and answers
+      every waiting and future job with it, with a 120 s ceiling.
+    - **Every fixture arrives the same way.** The harness's own `setContent` is used once, for empty
+      content; every fixture then goes through `ComposeScene.setContent`, so none of them is the
+      special first one.
+    `ViddikSceneReuseTest` pins the pixels (forward, reverse, repeated, and the three canaries with
+    roots of their own), and `verify-goldens.yaml` runs the whole suite through both paths on three
+    OSes — the flag is only worth having while they agree.
   - `ViddikEngine` — the record/verify harness (Paparazzi-equivalent). `VIDDIK_RECORD_MODE` env var
     (not a Gradle property — set it in the shell/CI step) toggles write-golden vs compare-and-fail.
     - **Recording writes only what a verification would reject** (`recordGolden`, issue #29). It renders

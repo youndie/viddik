@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import io.github.youndie.viddik.generated.GeneratedViddikRegistry
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -29,6 +30,31 @@ class ViddikSceneReuseTest {
         System.clearProperty(SCENE_REUSE_PROPERTY)
     }
 
+    /**
+     * The fixtures that broke first: a `Dialog` centres itself in the *window*, so a shared scene
+     * opened at another size draws it somewhere else entirely — measured at 49–56% of its pixels
+     * before the session started matching the window to each fixture's canvas. A `Popup` is the
+     * other extra-root shape, and the shadow canary moved by 0.8% for reasons that were never
+     * explained by anything but the window size either.
+     */
+    @Test
+    fun `fixtures with a root of their own survive a reused scene`() {
+        val canaries =
+            GeneratedViddikRegistry.components.filter {
+                it.name in setOf("Dialog", "Popup", "Shadow and clip")
+            }
+        check(canaries.size == 3) { "expected the three canaries, found ${canaries.map { it.name }}" }
+
+        val fresh = canaries.map { component -> capture(component.width, component.height, component.content) }
+
+        System.setProperty(SCENE_REUSE_PROPERTY, "true")
+        val reused = canaries.map { component -> capture(component.width, component.height, component.content) }
+
+        canaries.forEachIndexed { index, component ->
+            assertEquals(0, differingPixels(fresh[index], reused[index]), component.name)
+        }
+    }
+
     @Test
     fun `a reused scene draws what a fresh one draws, in any order`() {
         val fresh = FIXTURES.associate { it.name to it.captureFresh() }
@@ -45,6 +71,12 @@ class ViddikSceneReuseTest {
         }
         assertEquals(0, differingPixels(repeated[0], repeated[1]), "the same fixture twice")
     }
+
+    private fun capture(
+        width: Int,
+        height: Int,
+        content: @Composable () -> Unit,
+    ): BufferedImage = captureComposable(width = width, height = height, content = content)
 
     private class Fixture(
         val name: String,

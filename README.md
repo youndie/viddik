@@ -303,6 +303,26 @@ renderer bump wants — there "would the old comparison accept this" is not the 
 ./gradlew :yourModule:viddikRecord --force
 ```
 
+**A faster run, for a suite of same-sized fixtures.** Standing a Compose scene up is most of what a
+capture costs — an *empty* capture measures 11.7 ms against a median fixture's 12.1 ms — so one
+scene can serve the whole run:
+
+```kotlin
+viddik { sceneReuse = true }
+```
+
+Measured on 403 fixtures of one size: **13.3 ms per capture becomes 5.7 ms**. On viddik's own suite,
+whose fixtures deliberately differ in size, 22.4 ms becomes 13.4 ms — the scene is reopened whenever
+the next fixture has a different canvas, because a `Dialog` centres itself in the window and a window
+of the wrong size draws it somewhere else. Fixtures are therefore visited in size order rather than
+registry order, and a suite that alternates sizes every fixture gains nothing.
+
+Off by default, and it has one hard constraint: the run must contain no other Compose test that
+stands up a harness of its own, because two harnesses in one JVM wedge each other. `viddikVerify` and
+`viddikRecord` run only the generated screenshot tests, so that holds there by construction. The
+goldens are identical either way — this repository's CI records its own suite through both paths on
+all three OSes and compares.
+
 To work on one component, use `--component` — Gradle's own `--tests` can't help here, since every
 fixture is a JUnit5 **dynamic** test under a single `GeneratedViddikTests` class and `--tests` only
 matches classes and methods:

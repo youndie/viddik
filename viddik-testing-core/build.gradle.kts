@@ -74,4 +74,5 @@ tasks.withType<Test>().configureEach {
     // `-PsceneReuse=true` runs the whole suite against one shared scene (#40). The two paths have to
     // produce the same goldens, and the only way to keep that true is to be able to run both.
     providers.gradleProperty("sceneReuse").orNull?.let { systemProperty("viddik.sceneReuse", it) }
+    providers.gradleProperty("filter").orNull?.let { systemProperty("viddik.filter", it) }
 }

@@ -329,10 +329,17 @@ public object ViddikEngine {
             )
         }
 
+        // A shared scene lives at one canvas size and has to be reopened for another (a Dialog
+        // centres itself in the window, so the window must match the fixture). Visiting the sizes
+        // in order turns one reopening per fixture into one per distinct size; without it this
+        // repository's own suite, whose sizes alternate, gains nothing at all.
+        // Goldens do not depend on the order — that is what ViddikSceneReuseTest is for.
+        val ordered = if (sceneReuseEnabled) selected.sortedWith(bySize) else selected
+
         val tests =
             when {
                 designParityMode -> {
-                    designParityTests(selected, components)
+                    designParityTests(ordered, components)
                 }
 
                 recordMode -> {
@@ -445,6 +452,14 @@ public object ViddikEngine {
             }
         return perFixture + summary
     }
+
+    /** Width, then canvas height, then name, so a run visits each scene size once. */
+    private val bySize =
+        compareBy<ViddikComponent>(
+            { it.width },
+            { CaptureRequest.canvasHeightOf(it.height) },
+            { displayNameFor(it) },
+        )
 
     private fun displayNameFor(component: ViddikComponent): String = "${component.group} - ${component.name}"
 
