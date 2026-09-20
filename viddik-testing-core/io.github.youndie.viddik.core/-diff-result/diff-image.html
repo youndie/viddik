@@ -94,7 +94,7 @@
   <div class="cover ">
     <h1 class="cover"><span>diff</span><wbr><span><span>Image</span></span></h1>
   </div>
-  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-testing-core/jvmMain"><div class="symbol monospace"><span class="token keyword">val </span><a href="diff-image.html">diffImage</a><span class="token operator">: </span><a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.desktop/java/awt/image/BufferedImage.html">BufferedImage</a></div></div></div>
+  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-testing-core/jvmMain"><div class="symbol monospace"><span class="token keyword">val </span><a href="diff-image.html">diffImage</a><span class="token operator">: </span><a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.desktop/java/awt/image/BufferedImage.html">BufferedImage</a></div><p class="paragraph">The comparison as a picture — every mismatched (or out-of-bounds) pixel solid red, the rest as rendered — built on first read and not before.</p><p class="paragraph">A comparison that matches never asks for it, and that is nearly all of them: a passing verification, and since #29 every fixture a recording decides to keep. Painting a full image per fixture in order to drop it was most of what the differ spent.</p></div></div>
 </div>
     <div class="footer">
         <div class="footer--container">
