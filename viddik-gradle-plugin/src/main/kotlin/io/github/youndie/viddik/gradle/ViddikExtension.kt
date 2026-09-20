@@ -94,6 +94,25 @@ public interface ViddikExtension {
     public val designStrict: Property<Boolean>
 
     /**
+     * Whether a capture refuses to photograph text the font cannot draw, instead of letting the host
+     * draw it. Unset by default. Becomes the `viddik.glyphCheck` system property.
+     *
+     * A glyph missing from the font is resolved by whatever the machine has installed, so the golden
+     * is stable where it was recorded and different elsewhere — and the pixels that move are the ones
+     * *after* the character, which is why it is usually diagnosed as something else entirely.
+     *
+     * Off by default because the check can only read one font: turn it on in a module themed with
+     * `viddikTypography()`, or point [glyphCheckFont] at the font the module bundles itself.
+     */
+    public val glyphCheck: Property<Boolean>
+
+    /**
+     * Path to the font [glyphCheck] reads, for a module that bundles its own instead of using
+     * viddik's Roboto. Becomes the `viddik.glyphCheckFont` system property.
+     */
+    public val glyphCheckFont: Property<String>
+
+    /**
      * Whether the KSP processor generates the JUnit 5 test class alongside the component registry.
      * `true` by default; set it to `false` in a module that only wants the registry for
      * [ViddikShowroom][io.github.youndie.viddik.ViddikShowroom] — an Android app module, typically.

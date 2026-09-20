@@ -536,6 +536,21 @@ check(ViddikGlyphCoverage.missingGlyphs(label).isEmpty()) { "host fonts would dr
 `missingGlyphs(text, fontBytes = bundled Roboto)` reads the font's own `cmap`. Non-empty means that
 text renders differently per machine — draw the icon as an icon, or bundle a font that covers it.
 
+A capture can refuse such text instead of photographing it:
+
+```kotlin
+viddik {
+    glyphCheck = true                       // fail when the font cannot draw what the fixture says
+    glyphCheckFont = "src/main/res/font/plex.ttf"   // ...against your own font, if you bundle one
+}
+```
+
+Off by default, because the check reads one font and your fixtures may legitimately draw with
+another. With it on, a fixture drawing `←` fails with `Nothing in the font draws U+2190 (←), so the
+host would` — instead of a golden that is stable on the machine that recorded it and 0.06% different
+on the next one, with the moved pixels sitting *after* the character rather than on it. The bundled
+Roboto covers `‹ « < × … •` and none of `← → ↑ ↓ ✕ ▸`.
+
 `ViddikEngine.verify(...)` treats a match as "≤ 0.05% of pixels differ"
 (`ImageDiffer.DEFAULT_TOLERANCE_PERCENT`) with a ±2 per-channel allowance. For scale: adding one
 character to a button label moves 1.32% of the pixels, so this is a strict check, not a loose one.

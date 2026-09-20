@@ -67,4 +67,8 @@ kotlin.sourceSets.getByName("jvmTest") {
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     systemProperty("viddik.snapshotsDir", "src/jvmTest/snapshots")
+    // This module's fixtures are themed with viddikTypography(), so the bundled font is the one that
+    // draws them and the check has the right font to read. Eating our own dog food: a fixture that
+    // starts drawing a character Roboto lacks fails here rather than on a contributor's other OS.
+    systemProperty("viddik.glyphCheck", "true")
 }

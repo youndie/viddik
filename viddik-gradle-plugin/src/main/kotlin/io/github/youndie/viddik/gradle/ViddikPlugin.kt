@@ -468,6 +468,8 @@ public class ViddikPlugin : Plugin<Project> {
             extension.reportsDir.orNull?.let { task.systemProperty(REPORTS_DIR_PROPERTY, it) }
             extension.tolerancePercent.orNull?.let { task.systemProperty(TOLERANCE_PERCENT_PROPERTY, it) }
             extension.channelTolerance.orNull?.let { task.systemProperty(CHANNEL_TOLERANCE_PROPERTY, it) }
+            extension.glyphCheck.orNull?.let { task.systemProperty(GLYPH_CHECK_PROPERTY, it) }
+            extension.glyphCheckFont.orNull?.let { task.systemProperty(GLYPH_CHECK_FONT_PROPERTY, it) }
 
             if (!generateTests) {
                 task.doFirst {
@@ -525,6 +527,8 @@ public class ViddikPlugin : Plugin<Project> {
         const val REPORTS_DIR_PROPERTY = "viddik.reportsDir"
         const val TOLERANCE_PERCENT_PROPERTY = "viddik.tolerancePercent"
         const val CHANNEL_TOLERANCE_PROPERTY = "viddik.channelTolerance"
+        const val GLYPH_CHECK_PROPERTY = "viddik.glyphCheck"
+        const val GLYPH_CHECK_FONT_PROPERTY = "viddik.glyphCheckFont"
         const val DESIGN_PARITY_PROPERTY = "viddik.designParity"
         const val DESIGN_DIR_PROPERTY = "viddik.designDir"
         const val DESIGN_TOLERANCE_PERCENT_PROPERTY = "viddik.designTolerancePercent"
