@@ -125,6 +125,11 @@ private fun SkikoComposeUiTest.capture(
     if (throughHarness) {
         setContent(fixture)
     } else {
+        // Empty content first, driven to idle: a Dialog or a Popup is a root of its own inside the
+        // scene, and swapping straight from one fixture to the next leaves the previous one's extra
+        // roots in place — measured as Canary/Dialog differing by 55.9% of its pixels.
+        scene.setContent(content = {})
+        waitForIdle()
         scene.size = IntSize(request.width, request.canvasHeight)
         scene.setContent(content = fixture)
     }
@@ -245,6 +250,17 @@ private object CaptureSession {
 
     private val jobs = LinkedBlockingQueue<Job>()
 
+    /**
+     * What killed the scene, if anything did.
+     *
+     * Without this the first version of this class deadlocked: the worker thread died inside the
+     * harness, nothing answered, and every caller waited forever on a queue — a silent hang with no
+     * stack trace anywhere, because an uncaught exception on a daemon thread goes to a stderr that
+     * the test runner had already taken over.
+     */
+    @Volatile
+    private var fatal: Throwable? = null
+
     private val worker: Thread by lazy {
         Runtime.getRuntime().addShutdownHook(Thread({ close() }, "viddik-capture-close"))
         Thread({ serve() }, "viddik-capture").apply {
@@ -255,9 +271,17 @@ private object CaptureSession {
 
     fun capture(request: CaptureRequest): BufferedImage {
         worker
+        fatal?.let { throw IllegalStateException("The shared capture scene is not running", it) }
         val job = Job(request)
         jobs.put(job)
-        return job.answer.take().getOrThrow()
+        val answer =
+            job.answer.poll(ANSWER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                ?: throw IllegalStateException(
+                    "The shared capture scene did not answer within ${ANSWER_TIMEOUT_SECONDS}s. " +
+                        "Turn viddik.sceneReuse off to fall back to a scene per capture.",
+                    fatal,
+                )
+        return answer.getOrThrow()
     }
 
     /**
@@ -271,8 +295,18 @@ private object CaptureSession {
         stop.answer.poll(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
     }
 
-    @OptIn(ExperimentalTestApi::class)
     private fun serve() {
+        try {
+            runScene()
+        } catch (failure: Throwable) {
+            fatal = failure
+            // Everyone waiting, and everyone who arrives later, gets the reason rather than silence.
+            generateSequence { jobs.poll() }.forEach { it.answer.offer(Result.failure(failure)) }
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    private fun runScene() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         try {
             runDesktopComposeUiTest(width = DEFAULT_WIDTH, height = 1) {
@@ -294,6 +328,7 @@ private object CaptureSession {
     }
 
     private const val CLOSE_TIMEOUT_SECONDS = 10L
+    private const val ANSWER_TIMEOUT_SECONDS = 120L
 }
 
 /** Ends the shared scene, if one was ever opened. Safe to call when reuse is off. */
