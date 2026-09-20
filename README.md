@@ -308,7 +308,7 @@ capture costs — an *empty* capture measures 11.7 ms against a median fixture's
 scene can serve the whole run:
 
 ```kotlin
-viddik { sceneReuse = true }
+viddik { sceneReuse = false }   // on by default; turn it off if the task runs other Compose tests
 ```
 
 Measured on 403 fixtures of one size: **13.3 ms per capture becomes 5.7 ms**. On viddik's own suite,
@@ -316,6 +316,23 @@ whose fixtures deliberately differ in size, 22.4 ms becomes 13.4 ms — the scen
 the next fixture has a different canvas, because a `Dialog` centres itself in the window and a window
 of the wrong size draws it somewhere else. Fixtures are therefore visited in size order rather than
 registry order, and a suite that alternates sizes every fixture gains nothing.
+
+**Several forks.** All the fixtures live under one generated class and Gradle divides test work by
+class, so `maxParallelForks` alone does nothing. `shards` emits that many test classes, each taking
+every Nth fixture at runtime, and sets a matching `maxParallelForks` on `viddikVerify` and
+`viddikRecord`:
+
+```kotlin
+viddik { shards = 1 }   // two by default; one is right for a small suite
+```
+
+**Measure before changing it, in either direction.** A fork costs its own JVM start plus Compose and
+skiko class loading — about 1.9 s, against roughly 7 ms per capture once the scene is shared — so a
+few dozen fixtures are cheaper in one fork, and the gain on a big suite depends on the machine:
+measured on a 748-fixture suite on an 8-core laptop, two forks took a verification from ~52 s to
+~25 s and four to ~18 s, while four forks on a 20-core Linux box were *slower* than one on a
+synthetic suite of 400. `viddikDesignParity` ignores this setting, and each fork prints its own
+record summary.
 
 Off by default, and it has one hard constraint: the run must contain no other Compose test that
 stands up a harness of its own, because two harnesses in one JVM wedge each other. `viddikVerify` and

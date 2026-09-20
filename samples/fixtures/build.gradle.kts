@@ -72,4 +72,8 @@ kotlin {
 viddik {
     showroomTargets = true
     verifyOnCheck = true
+    // Nine fixtures are far too few for two forks to pay for themselves, and the default would
+    // normally be worth turning off here. It is left on because this build is the only place the
+    // plugin's own code generator runs, so this is where a sharded run — and now the default
+    // itself — gets exercised on every pull request.
 }

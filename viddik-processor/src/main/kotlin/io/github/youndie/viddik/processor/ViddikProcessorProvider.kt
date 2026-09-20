@@ -11,6 +11,10 @@ public class ViddikProcessorProvider : SymbolProcessorProvider {
             environment.codeGenerator,
             environment.logger,
             generateTests = environment.options["viddik.generateTests"] != "false",
+            // How many test classes to split the fixtures over. One is the shape everything else
+            // assumes; more exists so Gradle, which divides work by class, can put them in
+            // several forks.
+            shards = environment.options["viddik.shards"]?.toIntOrNull()?.coerceAtLeast(1) ?: 1,
             // KSP options are project-wide — there is one `ksp { arg(...) }` map for every run in a
             // module — so "which run is this" cannot be answered by an option and is read off the
             // environment instead. A run over one compilation reports that compilation's single

@@ -235,6 +235,7 @@ public class ViddikPlugin : Plugin<Project> {
                 // `this.layout` and not `layout`: the parameter of this function is the viddik one.
                 task.outputDir.set(this.layout.buildDirectory.dir("$SHOWROOM_TESTS_DIR/${layout.testSourceSetName}"))
                 task.showroomTargets.set(extension.showroomTargets)
+                task.shards.set(extension.shards)
             }
         testSourceSet.kotlin.srcDir(generateTests.flatMap { it.outputDir })
 
@@ -249,11 +250,24 @@ public class ViddikPlugin : Plugin<Project> {
                 extension.generateTests.zip(extension.showroomTargets) { tests, showroom ->
                     "$GENERATE_TESTS_OPTION=${tests && !showroom}"
                 }
+            val shardsOption = extension.shards.map { "$SHARDS_OPTION=$it" }
             // A `CommandLineArgumentProvider` rather than `arg(key, value)`: the value is read at
             // execution time, by which point `viddik { }` has been evaluated. It is project-wide,
             // which is why the processor works out from the platforms it is handed whether the run in
             // front of it is the common one or a single JVM compilation.
-            extensions.getByType(KspExtension::class.java).arg { listOf(option.get()) }
+            extensions.getByType(KspExtension::class.java).arg { listOf(option.get(), shardsOption.get()) }
+
+            // The provider above delivers the options, but Gradle cannot see them: a
+            // CommandLineArgumentProvider written as a lambda declares no inputs, so the KSP task's
+            // cache key does not contain them. With `org.gradle.caching=true` that means changing
+            // `generateTests` or `shards` restores a cached output generated under the *previous*
+            // values — the feature silently does nothing, and which classes exist depends on cache
+            // history. Found on a consumer suite, where `shards = 4` kept producing one test class
+            // until the cache was bypassed.
+            tasks.matching { it.name.startsWith(KSP_TASK_PREFIX) }.configureEach { task ->
+                task.inputs.property(GENERATE_TESTS_OPTION, option)
+                task.inputs.property(SHARDS_OPTION, extension.shards)
+            }
         }
 
         addViddikDependencies(extension, layout)
@@ -315,7 +329,11 @@ public class ViddikPlugin : Plugin<Project> {
 
         // Only now is the module's shape known, so this is where the default can be derived.
         val snapshotsDir = extension.snapshotsDir.getOrElse(layout.defaultSnapshotsDir)
+        val shards = extension.shards.get().coerceAtLeast(1)
         configureScreenshotTask(VERIFY_TASK, extension, module, snapshotsDir, generateTests) { task ->
+            // One class is one fork however high this is, which is why the fixtures are split into
+            // `shards` classes in the first place.
+            task.maxParallelForks = shards
             // A re-recorded golden has to re-run the comparison. A file tree rather than `inputs.dir`
             // so a module that hasn't recorded anything yet still reaches the task's own error
             // message ("No golden snapshot for ...") instead of failing on a missing directory.
@@ -325,6 +343,7 @@ public class ViddikPlugin : Plugin<Project> {
                 .withPathSensitivity(PathSensitivity.RELATIVE)
         }
         configureScreenshotTask(RECORD_TASK, extension, module, snapshotsDir, generateTests) { task ->
+            task.maxParallelForks = shards
             task.environment(RECORD_MODE_ENV, "true")
             // Recording is what the user asked for, not something to skip because the inputs happen
             // to look unchanged — this is the `--rerun` that used to be part of the incantation.
@@ -490,6 +509,12 @@ public class ViddikPlugin : Plugin<Project> {
      */
     private fun ViddikExtension.applyDefaults() {
         generateTests.convention(true)
+        // Two forks and a shared scene by default: measured on a downstream suite of 748 fixtures,
+        // the pair took a verification from 104 s to about 25 s. Both are defaults of the *plugin*
+        // rather than of the engine, which matters — see ViddikExtension for what each one assumes,
+        // and note that `captureComposable`/`verify` called directly keep the old behaviour.
+        shards.convention(2)
+        sceneReuse.convention(true)
         verifyOnCheck.convention(false)
         excludeFromTestTask.convention(true)
         showroomTargets.convention(false)
@@ -515,6 +540,7 @@ public class ViddikPlugin : Plugin<Project> {
 
         const val VERIFY_PROPERTY = "viddik.verify"
         const val GENERATE_TESTS_OPTION = "viddik.generateTests"
+        const val SHARDS_OPTION = "viddik.shards"
         const val COMMON_SOURCE_SET = "commonMain"
         const val COMMON_API_CONFIGURATION = "commonMainApi"
         const val COMMON_KSP_CONFIGURATION = "kspCommonMainMetadata"
