@@ -256,6 +256,18 @@ public class ViddikPlugin : Plugin<Project> {
             // which is why the processor works out from the platforms it is handed whether the run in
             // front of it is the common one or a single JVM compilation.
             extensions.getByType(KspExtension::class.java).arg { listOf(option.get(), shardsOption.get()) }
+
+            // The provider above delivers the options, but Gradle cannot see them: a
+            // CommandLineArgumentProvider written as a lambda declares no inputs, so the KSP task's
+            // cache key does not contain them. With `org.gradle.caching=true` that means changing
+            // `generateTests` or `shards` restores a cached output generated under the *previous*
+            // values — the feature silently does nothing, and which classes exist depends on cache
+            // history. Found on a consumer suite, where `shards = 4` kept producing one test class
+            // until the cache was bypassed.
+            tasks.matching { it.name.startsWith(KSP_TASK_PREFIX) }.configureEach { task ->
+                task.inputs.property(GENERATE_TESTS_OPTION, option)
+                task.inputs.property(SHARDS_OPTION, extension.shards)
+            }
         }
 
         addViddikDependencies(extension, layout)
@@ -497,7 +509,12 @@ public class ViddikPlugin : Plugin<Project> {
      */
     private fun ViddikExtension.applyDefaults() {
         generateTests.convention(true)
-        shards.convention(1)
+        // Two forks and a shared scene by default: measured on a downstream suite of 748 fixtures,
+        // the pair took a verification from 104 s to about 25 s. Both are defaults of the *plugin*
+        // rather than of the engine, which matters — see ViddikExtension for what each one assumes,
+        // and note that `captureComposable`/`verify` called directly keep the old behaviour.
+        shards.convention(2)
+        sceneReuse.convention(true)
         verifyOnCheck.convention(false)
         excludeFromTestTask.convention(true)
         showroomTargets.convention(false)

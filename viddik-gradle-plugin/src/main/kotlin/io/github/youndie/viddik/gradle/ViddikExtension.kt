@@ -94,17 +94,22 @@ public interface ViddikExtension {
     public val designStrict: Property<Boolean>
 
     /**
-     * How many forks to spread the fixtures over. `1` by default, which is one class and one fork.
+     * How many forks to spread the fixtures over. **Two by default.**
      *
      * Gradle divides test work by class, and all the fixtures live under one generated class, so
      * `maxParallelForks` alone does nothing. With this set, the processor emits that many classes,
      * each taking every Nth fixture at runtime, and the verify and record tasks get a matching
      * `maxParallelForks`.
      *
-     * It buys nothing on a small suite: each fork pays its own JVM start plus Compose and skiko
-     * class loading — measured at ~1.9 s against ~18 ms per capture — so a suite has to be big
-     * enough for the captures to outweigh that. Measured on 400 fixtures, four forks took a run
-     * from 11.3 s to about 5.8 s; on this repository's own 28, sharding is a straight loss.
+     * **Set it to 1 on a small suite.** Each fork pays its own JVM start plus Compose and skiko
+     * class loading — measured at ~1.9 s, against ~7 ms per capture with [sceneReuse] on — so a
+     * module with a few dozen fixtures pays more for the second fork than it saves, and this
+     * repository's own 28-fixture suite is faster with one.
+     *
+     * What it is worth is also machine-dependent, which is the honest reason the default is two
+     * rather than four: measured on a 748-fixture suite on an 8-core laptop, two forks took a
+     * verification from ~52 s to ~25 s and four to ~18 s, while on a 20-core Linux box four forks
+     * were *slower* than one on a synthetic 400-fixture suite. Measure before raising it.
      *
      * `viddikDesignParity` ignores it: that task writes one report for the module, and shard 0
      * measures everything.
@@ -113,7 +118,13 @@ public interface ViddikExtension {
 
     /**
      * Whether the run serves every capture from one shared scene instead of standing a scene up per
-     * fixture. Unset by default. Becomes the `viddik.sceneReuse` system property.
+     * fixture. **On by default.** Becomes the `viddik.sceneReuse` system property.
+     *
+     * The default lives here, in the plugin, and not in the engine: the tasks this plugin registers
+     * run the generated screenshot tests and nothing else, which is exactly the condition a shared
+     * scene needs. `captureComposable` and `ViddikEngine.verify` called from your own test keep
+     * standing up a scene per capture, because there the plugin cannot know what else shares the
+     * JVM.
      *
      * Standing a scene up is most of what a capture costs — an *empty* capture measured 11.7 ms
      * against a median fixture's 12.1 ms — so sharing one takes a suite of same-sized fixtures from
@@ -121,9 +132,15 @@ public interface ViddikExtension {
      * canvas, because a `Dialog` centres itself in the window; a suite whose sizes alternate every
      * fixture therefore gains nothing, and one whose fixtures share a size gains the most.
      *
-     * Two constraints come with it: the run must not contain other Compose tests that stand up a
-     * harness of their own (a shared scene cannot share a JVM with one), and the fixtures are
-     * visited in size order rather than registry order.
+     * Two constraints come with it. The run must not contain other Compose tests that stand up a
+     * harness of their own — a shared scene cannot share a JVM with one, and the run fails with
+     * "the shared capture scene did not answer" rather than hanging; set this to `false` if your
+     * verification task runs such tests. And the fixtures are visited in size order rather than
+     * registry order, because the scene is reopened for each new canvas size.
+     *
+     * Measured on a downstream suite of 748 fixtures: 71 s to 52 s on its own, and the goldens are
+     * identical either way — this repository's CI records its own suite through both paths on three
+     * operating systems and compares.
      */
     public val sceneReuse: Property<Boolean>
 

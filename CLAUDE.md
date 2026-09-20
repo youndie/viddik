@@ -313,7 +313,7 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     `VIDDIK_RECORD_MODE`, which turns every verify into a write). Two demo fixtures carry
     `tolerancePercent = 0.2` purely so the codegen path is live in this repo's own suite — their
     goldens do not need it.
-  - **Scene reuse** (`viddik.sceneReuse`, the plugin's `sceneReuse`, off by default — issue #40).
+  - **Scene reuse** (`viddik.sceneReuse`, the plugin's `sceneReuse`, **on by default in the plugin, off in the engine** — issue #40).
     One `runDesktopComposeUiTest` is held open on a thread of its own (`CaptureSession`) and serves
     captures from a queue, instead of standing a scene up per fixture. Measured: 403 same-sized
     fixtures go from 13.3 to 5.7 ms per capture; this repo's own mixed-size suite from 22.4 to
@@ -338,6 +338,14 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     `ViddikSceneReuseTest` pins the pixels (forward, reverse, repeated, and the three canaries with
     roots of their own), and `verify-goldens.yaml` runs the whole suite through both paths on three
     OSes — the flag is only worth having while they agree.
+    - **Where the default lives is the design decision.** `sceneReuse.convention(true)` is on the
+      *extension*, so it applies to the tasks this plugin registers — which run the generated
+      screenshot tests and nothing else, the exact condition a shared scene needs. The engine's own
+      `viddik.sceneReuse` stays off when the property is absent, so `captureComposable` and
+      `ViddikEngine.verify` called from a hand-written test keep a scene per capture: there nobody
+      can know what else shares the JVM. This module's own `jvmTest` is that case — it mixes
+      `RerootingCanaryTest`'s harness with the generated fixtures, and would wedge if the engine
+      defaulted to reuse.
   - **Sharding** (`viddik { shards = N }` → the `viddik.shards` KSP option, issue #35). The processor
     emits N `GeneratedViddikTests<k>` classes instead of one, each calling
     `dynamicTests(components, shard = k, shards = N)`, and the plugin sets `maxParallelForks = N` on
@@ -354,10 +362,22 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       `--component` would fail in three forks and pass in the fourth.
     - **Design parity is not split**: it clears one report directory and rewrites one summary, so
       shard 0 measures everything and the others return no tests.
-    Measured, and this is why it is off by default: on 403 fixtures on a 20-core box, four forks took
-    19.7 s against one fork's 18.7 s — *slower*. With scene reuse on, 13.4 s against 16.0 s (1.19x).
-    The forks do run concurrently (four test JVMs alive, load ~4, 5 GB of 16 GB used), so the cost is
-    per-fork JVM and Compose/skiko start-up, not contention for the machine.
+    **Two shards by default** (`shards.convention(2)`), and the number is a compromise between two
+    measurements that disagree: on a downstream suite of 748 fixtures on an 8-core laptop, two forks
+    took a verification from ~52 s to ~25 s and four to ~18 s; on a synthetic 400-fixture suite on a
+    20-core Linux box, four forks took 19.7 s against one fork's 18.7 s — *slower*. The forks run
+    concurrently in both cases (four test JVMs alive, load ~4, 5 GB of 16 GB used), so what does not
+    scale is per-fork JVM and Compose/skiko start-up, ~1.9 s against ~7 ms per capture. A module with
+    a few dozen fixtures should set `shards = 1`.
+    - **The options have to be inputs of the KSP task, or they do nothing.** `KspExtension.arg { }`
+      takes a `CommandLineArgumentProvider`; written as a lambda it declares no inputs, so the KSP
+      task's cache key does not contain `viddik.generateTests` or `viddik.shards`. With
+      `org.gradle.caching=true` Gradle then restores an output generated under the *previous* values
+      and the setting silently does nothing — which is how `shards = 4` produced one test class
+      three measurements in a row on a consumer build, and how `generateTests = false` has been
+      quietly broken since it shipped. The plugin now also declares both as `inputs.property` on
+      every `ksp*` task. A measurement that changes one of these settings must check that the
+      generated classes actually changed; `--no-build-cache` is what exposed it.
   - `ViddikEngine` — the record/verify harness (Paparazzi-equivalent). `VIDDIK_RECORD_MODE` env var
     (not a Gradle property — set it in the shell/CI step) toggles write-golden vs compare-and-fail.
     - **Recording writes only what a verification would reject** (`recordGolden`, issue #29). It renders
