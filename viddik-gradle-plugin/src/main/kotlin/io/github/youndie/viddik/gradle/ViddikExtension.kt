@@ -94,6 +94,24 @@ public interface ViddikExtension {
     public val designStrict: Property<Boolean>
 
     /**
+     * How many forks to spread the fixtures over. `1` by default, which is one class and one fork.
+     *
+     * Gradle divides test work by class, and all the fixtures live under one generated class, so
+     * `maxParallelForks` alone does nothing. With this set, the processor emits that many classes,
+     * each taking every Nth fixture at runtime, and the verify and record tasks get a matching
+     * `maxParallelForks`.
+     *
+     * It buys nothing on a small suite: each fork pays its own JVM start plus Compose and skiko
+     * class loading — measured at ~1.9 s against ~18 ms per capture — so a suite has to be big
+     * enough for the captures to outweigh that. Measured on 400 fixtures, four forks took a run
+     * from 11.3 s to about 5.8 s; on this repository's own 28, sharding is a straight loss.
+     *
+     * `viddikDesignParity` ignores it: that task writes one report for the module, and shard 0
+     * measures everything.
+     */
+    public val shards: Property<Int>
+
+    /**
      * Whether the run serves every capture from one shared scene instead of standing a scene up per
      * fixture. Unset by default. Becomes the `viddik.sceneReuse` system property.
      *

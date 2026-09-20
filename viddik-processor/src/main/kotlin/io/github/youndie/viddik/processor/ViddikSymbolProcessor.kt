@@ -77,6 +77,7 @@ public class ViddikSymbolProcessor(
     private val codeGenerator: CodeGenerator,
     private val logger: KSPLogger,
     private val generateTests: Boolean = true,
+    private val shards: Int = 1,
     /**
      * Whether this run is over `commonMain` rather than over one compilation. The registry is common
      * code and can be emitted here; the JUnit 5 test class is not and cannot.
@@ -357,24 +358,59 @@ public class ViddikSymbolProcessor(
             .writeTo(codeGenerator, dependencies)
     }
 
+    /**
+     * The JUnit 5 class that drives the goldens — or [shards] of them.
+     *
+     * Gradle divides test work by class, so one class is one fork however high `maxParallelForks`
+     * is. N classes, each taking every Nth fixture at runtime, is what makes the fixtures divisible
+     * without the split being visible to anyone writing them. The names keep the
+     * `*GeneratedViddikTests*` shape the plugin filters on.
+     *
+     * The split is applied by `ViddikEngine.dynamicTests` to the registry rather than here: a
+     * `@PreviewParameter` fixture becomes its entries at runtime, so the fixtures this processor can
+     * see are not the fixtures the run will have.
+     */
     private fun generateTests(dependencies: Dependencies) {
+        repeat(shards) { shard -> generateTestClass(dependencies, shard) }
+    }
+
+    private fun generateTestClass(
+        dependencies: Dependencies,
+        shard: Int,
+    ) {
         val engineClass = ClassName("io.github.youndie.viddik.core", "ViddikEngine")
         val registryClass = ClassName(GENERATED_PACKAGE, "GeneratedViddikRegistry")
         val dynamicTestClass = ClassName("org.junit.jupiter.api", "DynamicTest")
         val testFactoryClass = ClassName("org.junit.jupiter.api", "TestFactory")
+        val name = if (shards == 1) "GeneratedViddikTests" else "GeneratedViddikTests$shard"
 
         FileSpec
-            .builder(GENERATED_PACKAGE, "GeneratedViddikTests")
+            .builder(GENERATED_PACKAGE, name)
             .addType(
                 TypeSpec
-                    .classBuilder("GeneratedViddikTests")
+                    .classBuilder(name)
                     .addFunction(
                         FunSpec
                             .builder("runAllScreenshots")
                             .addAnnotation(testFactoryClass)
                             .returns(LIST.parameterizedBy(dynamicTestClass))
-                            .addStatement("return %T.dynamicTests(%T.components)", engineClass, registryClass)
-                            .build(),
+                            .apply {
+                                if (shards == 1) {
+                                    addStatement(
+                                        "return %T.dynamicTests(%T.components)",
+                                        engineClass,
+                                        registryClass,
+                                    )
+                                } else {
+                                    addStatement(
+                                        "return %T.dynamicTests(%T.components,·shard·=·%L,·shards·=·%L)",
+                                        engineClass,
+                                        registryClass,
+                                        shard,
+                                        shards,
+                                    )
+                                }
+                            }.build(),
                     ).build(),
             ).build()
             .writeTo(codeGenerator, dependencies)

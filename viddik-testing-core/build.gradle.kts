@@ -54,6 +54,13 @@ dependencies {
     add("kspJvmTest", project(":viddik-processor"))
 }
 
+// `-Pshards=4` splits this module's own fixtures across four generated classes, which is what the
+// plugin does for a consumer through `viddik { shards = ... }`. Here it exists to exercise the
+// processor's side of that split and to measure it; the default is one class, as everywhere else.
+ksp {
+    providers.gradleProperty("shards").orNull?.let { arg("viddik.shards", it) }
+}
+
 kotlin.sourceSets.getByName("jvmTest") {
     kotlin.srcDir("build/generated/ksp/jvm/jvmTest/kotlin")
 }
@@ -75,4 +82,5 @@ tasks.withType<Test>().configureEach {
     // produce the same goldens, and the only way to keep that true is to be able to run both.
     providers.gradleProperty("sceneReuse").orNull?.let { systemProperty("viddik.sceneReuse", it) }
     providers.gradleProperty("filter").orNull?.let { systemProperty("viddik.filter", it) }
+    providers.gradleProperty("shards").orNull?.let { maxParallelForks = it.toInt().coerceAtLeast(1) }
 }

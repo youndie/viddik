@@ -317,6 +317,19 @@ the next fixture has a different canvas, because a `Dialog` centres itself in th
 of the wrong size draws it somewhere else. Fixtures are therefore visited in size order rather than
 registry order, and a suite that alternates sizes every fixture gains nothing.
 
+**Several forks, if the suite is big enough to pay for them.** All the fixtures live under one
+generated class and Gradle divides test work by class, so `maxParallelForks` alone does nothing:
+
+```kotlin
+viddik { shards = 4 }
+```
+
+That emits four test classes, each taking every fourth fixture at runtime, and sets a matching
+`maxParallelForks` on `viddikVerify` and `viddikRecord`. Measure before turning it on — each fork
+pays its own JVM start plus Compose and skiko class loading, and on the machine this was measured on
+(20 cores, 400 fixtures) four forks were *slower* than one until scene reuse had shrunk the captures,
+and then worth 1.19x. `viddikDesignParity` ignores it, and each fork prints its own record summary.
+
 Off by default, and it has one hard constraint: the run must contain no other Compose test that
 stands up a harness of its own, because two harnesses in one JVM wedge each other. `viddikVerify` and
 `viddikRecord` run only the generated screenshot tests, so that holds there by construction. The

@@ -311,10 +311,20 @@ public object ViddikEngine {
      *
      * A filter that matches nothing fails loudly rather than reporting an empty, green run — an
      * accidentally over-narrow filter would otherwise look exactly like a passing verification.
+     *
+     * [shard] of [shards] takes every Nth fixture, which is how `viddik { shards = 4 }` puts them in
+     * several forks. The default is the whole module, and generated code written against an older
+     * version keeps calling it that way.
      */
-    public fun dynamicTests(components: List<ViddikComponent>): List<DynamicTest> {
+    public fun dynamicTests(
+        components: List<ViddikComponent>,
+        shard: Int = 0,
+        shards: Int = 1,
+    ): List<DynamicTest> {
+        require(shards >= 1 && shard in 0 until shards) { "shard $shard of $shards is not a shard" }
+
         val pattern = System.getProperty(FILTER_PROPERTY)?.takeIf { it.isNotBlank() }
-        val selected =
+        val matching =
             if (pattern == null) {
                 components
             } else {
@@ -322,40 +332,48 @@ public object ViddikEngine {
                 components.filter { regex.containsMatchIn(displayNameFor(it)) }
             }
 
-        if (pattern != null && selected.isEmpty()) {
+        // Judged against the whole module rather than against this shard: once the fixtures are
+        // split across JVMs an empty shard is the normal case, and the mistake worth failing on is a
+        // filter that matches nothing *anywhere*.
+        if (pattern != null && matching.isEmpty()) {
             error(
                 "No @ViddikScreenshot component matches $FILTER_PROPERTY=\"$pattern\". " +
                     "This module has: ${components.joinToString { "\"${displayNameFor(it)}\"" }}",
             )
         }
 
+        // Design parity writes one report for the whole module — a directory it clears first and a
+        // summary it rewrites — so it is not split: shard 0 measures everything and the others
+        // contribute nothing. Splitting it would mean merging the report in the Gradle task.
+        if (designParityMode) {
+            return if (shard == 0) designParityTests(matching, components) else emptyList()
+        }
+
+        // Every shard sees the same list in the same order and takes every Nth of it. It has to
+        // happen here rather than at codegen time: a `@PreviewParameter` fixture only becomes its
+        // entries when the registry is built, at runtime.
+        val mine =
+            if (shards == 1) matching else matching.filterIndexed { index, _ -> index % shards == shard }
+
         // A shared scene lives at one canvas size and has to be reopened for another (a Dialog
         // centres itself in the window, so the window must match the fixture). Visiting the sizes
         // in order turns one reopening per fixture into one per distinct size; without it this
         // repository's own suite, whose sizes alternate, gains nothing at all.
         // Goldens do not depend on the order — that is what ViddikSceneReuseTest is for.
-        val ordered = if (sceneReuseEnabled) selected.sortedWith(bySize) else selected
+        val ordered = if (sceneReuseEnabled) mine.sortedWith(bySize) else mine
 
         val tests =
-            when {
-                designParityMode -> {
-                    designParityTests(ordered, components)
-                }
-
-                recordMode -> {
-                    recordTests(selected)
-                }
-
-                else -> {
-                    selected.map { component ->
-                        DynamicTest.dynamicTest(displayNameFor(component)) { verify(component) }
-                    }
+            if (recordMode) {
+                recordTests(ordered)
+            } else {
+                ordered.map { component ->
+                    DynamicTest.dynamicTest(displayNameFor(component)) { verify(component) }
                 }
             }
 
         // A reused scene outlives the fixtures by construction, so somebody has to end it: the
         // harness holds threads of its own, and a test JVM that will not exit is worse than a slow
-        // one. Last in the list, after the record or design-parity summary.
+        // one. Last in the list, after the record summary.
         return if (sceneReuseEnabled) {
             tests + DynamicTest.dynamicTest(CAPTURE_SESSION_TEST_NAME) { closeCaptureSession() }
         } else {

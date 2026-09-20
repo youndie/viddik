@@ -72,4 +72,8 @@ kotlin {
 viddik {
     showroomTargets = true
     verifyOnCheck = true
+    // Nine fixtures are far too few for sharding to pay for itself — two JVMs cost more than the
+    // captures they divide. It is set here because this build is the only place the plugin's own
+    // code generator runs, so this is where a sharded run gets exercised on every pull request.
+    shards = 2
 }

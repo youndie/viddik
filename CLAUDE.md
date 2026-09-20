@@ -338,6 +338,26 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     `ViddikSceneReuseTest` pins the pixels (forward, reverse, repeated, and the three canaries with
     roots of their own), and `verify-goldens.yaml` runs the whole suite through both paths on three
     OSes — the flag is only worth having while they agree.
+  - **Sharding** (`viddik { shards = N }` → the `viddik.shards` KSP option, issue #35). The processor
+    emits N `GeneratedViddikTests<k>` classes instead of one, each calling
+    `dynamicTests(components, shard = k, shards = N)`, and the plugin sets `maxParallelForks = N` on
+    verify and record. Four things make it non-obvious:
+    - **The split is applied to the runtime registry, not at codegen time.** A `@PreviewParameter`
+      fixture only becomes its entries when the registry is built, so the fixtures the processor
+      sees are not the fixtures the run has.
+    - **Both emitters have to shard.** The processor writes the class for fixtures in a test source
+      set, `ViddikGenerateTestsTask` writes it for the `showroomTargets` shape, and their output is
+      meant to stay identical. `samples/fixtures` sets `shards = 2` purely so the task's side of it
+      is exercised on every pull request.
+    - **An empty shard is normal; a filter matching nothing is not.** `dynamicTests` judges the
+      `viddik.filter` failure against the whole module before slicing, or an over-narrow
+      `--component` would fail in three forks and pass in the fourth.
+    - **Design parity is not split**: it clears one report directory and rewrites one summary, so
+      shard 0 measures everything and the others return no tests.
+    Measured, and this is why it is off by default: on 403 fixtures on a 20-core box, four forks took
+    19.7 s against one fork's 18.7 s — *slower*. With scene reuse on, 13.4 s against 16.0 s (1.19x).
+    The forks do run concurrently (four test JVMs alive, load ~4, 5 GB of 16 GB used), so the cost is
+    per-fork JVM and Compose/skiko start-up, not contention for the machine.
   - `ViddikEngine` — the record/verify harness (Paparazzi-equivalent). `VIDDIK_RECORD_MODE` env var
     (not a Gradle property — set it in the shell/CI step) toggles write-golden vs compare-and-fail.
     - **Recording writes only what a verification would reject** (`recordGolden`, issue #29). It renders
