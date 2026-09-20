@@ -21,6 +21,9 @@ private const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
 /** The run-level entry a recording run appends to its fixtures; see [ViddikEngine.recordTests]. */
 internal const val RECORD_SUMMARY_TEST_NAME: String = "Record summary"
 
+/** The run-level entry that ends a reused scene; see [ViddikEngine.dynamicTests]. */
+internal const val CAPTURE_SESSION_TEST_NAME: String = "Capture session"
+
 /**
  * What a recording run did with each fixture it rendered, so the run can say it once at the end
  * rather than a line per fixture.
@@ -326,11 +329,30 @@ public object ViddikEngine {
             )
         }
 
-        if (designParityMode) return designParityTests(selected, components)
-        if (recordMode) return recordTests(selected)
+        val tests =
+            when {
+                designParityMode -> {
+                    designParityTests(selected, components)
+                }
 
-        return selected.map { component ->
-            DynamicTest.dynamicTest(displayNameFor(component)) { verify(component) }
+                recordMode -> {
+                    recordTests(selected)
+                }
+
+                else -> {
+                    selected.map { component ->
+                        DynamicTest.dynamicTest(displayNameFor(component)) { verify(component) }
+                    }
+                }
+            }
+
+        // A reused scene outlives the fixtures by construction, so somebody has to end it: the
+        // harness holds threads of its own, and a test JVM that will not exit is worse than a slow
+        // one. Last in the list, after the record or design-parity summary.
+        return if (sceneReuseEnabled) {
+            tests + DynamicTest.dynamicTest(CAPTURE_SESSION_TEST_NAME) { closeCaptureSession() }
+        } else {
+            tests
         }
     }
 
