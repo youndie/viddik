@@ -624,7 +624,19 @@ don't spend the day re-deriving them (`ViddikGlyphCoverage.kt`'s header keeps th
    more failures than doing nothing.
 
 What shipped instead is `ViddikGlyphCoverage.missingGlyphs(text, fontBytes)` — a cmap reader that
-names the offending codepoints up front (`ViddikGlyphCoverageTest` pins the behavior).
+names the offending codepoints up front (`ViddikGlyphCoverageTest` pins the behavior) — and, since
+issue #6, a capture-time check that uses it: `viddik.glyphCheck` (the plugin's `glyphCheck`) collects
+the text of every semantics node after `waitForIdle` and refuses to photograph a fixture whose font
+cannot draw it, naming the codepoint. `viddik.glyphCheckFont` points it at a module's own font.
+**Opt-in on purpose**: the check reads one font, and a consumer bundling another would be failed for
+fixtures that are perfectly portable. This module's own suite turns it on
+(`viddik-testing-core/build.gradle.kts`), which is what keeps its fixtures honest. The cmap read is
+memoised per font instance — without that it is a full parse per fixture.
+
+Measured coverage of the bundled Roboto-Variable, for the record: `‹ « < × … •` yes; `← → ↑ ↓ ✕ ⟵ ◀
+▲ ⌫ ≡ ⋮ ▸` no. `ViddikShowroom` itself draws `←` in its back row, so a fixture photographing the
+detail view records a host-dependent golden — see #6, where the choice between covering the arrows
+and using a covered character is the owner's.
 
 `Dialog` content used to be the other gap, for a mechanical reason: the perspective term sat on a
 modifier around the fixture, and Compose renders a dialog into a root of its own, which that modifier

@@ -38,7 +38,15 @@ public object ViddikGlyphCoverage {
             .toSet()
     }
 
-    public fun codepointsOf(fontBytes: ByteArray): Set<Int> = cmapCodepoints(fontBytes)
+    /**
+     * Cached by font instance: the capture-time check calls this once per fixture, and re-reading a
+     * cmap several hundred times per run is a cost nobody asked for. Keyed by identity, which is
+     * what a bundled font loaded once per JVM has.
+     */
+    private val codepointCache = java.util.IdentityHashMap<ByteArray, Set<Int>>()
+
+    public fun codepointsOf(fontBytes: ByteArray): Set<Int> =
+        synchronized(codepointCache) { codepointCache.getOrPut(fontBytes) { cmapCodepoints(fontBytes) } }
 }
 
 // Minimal cmap reader — formats 4 (BMP) and 12 (full range) are the only ones a modern TTF/OTF ships,

@@ -13,7 +13,10 @@ import androidx.compose.ui.graphics.asComposeCanvas
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.scene.ComposeScene
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SkikoComposeUiTest
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isRoot
@@ -31,6 +34,7 @@ import org.jetbrains.skia.Matrix44
 import org.jetbrains.skia.Surface
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
+import java.io.File
 import javax.imageio.ImageIO
 
 @OptIn(ExperimentalTestApi::class)
@@ -74,6 +78,21 @@ public fun captureComposable(
                 }
             }
             waitForIdle()
+
+            if (glyphCheckEnabled) {
+                val drawn = mutableListOf<String>()
+                onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Text), useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .forEach { node ->
+                        node.config.getOrNull(SemanticsProperties.Text)?.forEach { drawn += it.text }
+                    }
+                onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText), useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .forEach { node ->
+                        node.config.getOrNull(SemanticsProperties.EditableText)?.let { drawn += it.text }
+                    }
+                failOnUncoveredGlyphs(drawn)
+            }
 
             val scene = (this as SkikoComposeUiTest).scene
 
@@ -145,6 +164,49 @@ public fun captureComposable(
         0,
         width.coerceAtMost(full.width),
         measuredHeightPx.coerceIn(1, full.height),
+    )
+}
+
+private const val GLYPH_CHECK_PROPERTY = "viddik.glyphCheck"
+private const val GLYPH_CHECK_FONT_PROPERTY = "viddik.glyphCheckFont"
+
+private val glyphCheckEnabled: Boolean
+    get() = System.getProperty(GLYPH_CHECK_PROPERTY)?.toBooleanStrictOrNull() == true
+
+/** The font the check reads, `viddik.glyphCheckFont` for a consumer that bundles its own. */
+private val glyphCheckFont: ByteArray
+    get() = System.getProperty(GLYPH_CHECK_FONT_PROPERTY)?.let { File(it).readBytes() } ?: robotoBytes
+
+/**
+ * Refuses to photograph text whose font cannot draw it.
+ *
+ * A glyph the font lacks is resolved by the host — Segoe UI Symbol here, DejaVu there — and the
+ * result is a golden that is stable on the machine that recorded it and different on the next one,
+ * discovered later as a fraction of a percent of drifting pixels somewhere near, but not at, the
+ * character responsible. Issue #6 is two days spent on exactly that: the diff pointed at a button,
+ * the cause was a `←` in the link beside it pushing everything two pixels left.
+ *
+ * Off unless asked for, because the check can only read one font and a consumer may legitimately
+ * draw with another: pointing it at the wrong one would fail fixtures that are perfectly portable.
+ * `viddik { glyphCheck = true }` turns it on for a module themed with `viddikTypography()`;
+ * `glyphCheckFont` points it at the font a module bundles itself.
+ */
+private fun failOnUncoveredGlyphs(drawn: List<String>) {
+    val font = glyphCheckFont
+    val offenders = drawn.associateWith { ViddikGlyphCoverage.missingGlyphs(it, font) }.filterValues { it.isNotEmpty() }
+    if (offenders.isEmpty()) return
+
+    val codepoints =
+        offenders.values
+            .flatten()
+            .toSortedSet()
+            .joinToString { "U+%04X (%s)".format(it, String(Character.toChars(it))) }
+    val where = offenders.keys.joinToString(", ") { "\"${it.take(60)}\"" }
+    error(
+        "Nothing in the font draws $codepoints, so the host would: $where. A golden recorded that " +
+            "way is stable here and different on the next machine. Draw the character as an icon, " +
+            "bundle a font that covers it, or point $GLYPH_CHECK_FONT_PROPERTY at the font this " +
+            "module actually uses.",
     )
 }
 
