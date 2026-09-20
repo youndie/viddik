@@ -34,8 +34,9 @@ history for the exact rename map if cross-referencing old code/docs that still s
 ./gradlew :viddik-processor:publishToMavenLocal   # Single module, e.g. after a processor-only change
 VIDDIK_RECORD_MODE=true ./gradlew :viddik-testing-core:jvmTest --tests "*runAllScreenshots*"
                                                    # Re-record the self-test golden PNGs (src/jvmTest/snapshots/).
-                                                   # This rewrites EVERY golden, not the ones you changed —
-                                                   # always `git status` afterwards and revert the rest.
+                                                   # Only the ones a verification would reject: a record on a
+                                                   # clean tree writes nothing. Add -Dviddik.forceRecord=true
+                                                   # to rewrite the whole set (Compose/font/renderer bump).
 ```
 
 CI: `.github/workflows/verify-goldens.yaml` runs `:viddik-testing-core:jvmTest` on every pull request
@@ -302,6 +303,19 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     goldens do not need it.
   - `ViddikEngine` — the record/verify harness (Paparazzi-equivalent). `VIDDIK_RECORD_MODE` env var
     (not a Gradle property — set it in the shell/CI step) toggles write-golden vs compare-and-fail.
+    - **Recording writes only what a verification would reject** (`recordGolden`, issue #29). It renders
+      the fixture, compares it with the existing golden through `ImageDiffer` at the same three
+      thresholds `verify` resolved, and writes only when that comparison fails; `viddik.forceRecord`
+      (the plugin's `--force`) skips the comparison. Measured on this repository's own suite before
+      the change: a record on a clean tree rewrote 4 of 28 goldens, all 4 green under verify before
+      and after — a PNG written from a render that differs only within tolerance is a new file
+      carrying the same picture, which is review noise here and a new blob per file in a consumer
+      whose goldens are in Git LFS. Afterwards: 0 of 28. An unreadable golden counts as a mismatch
+      and is replaced, since repairing one is what a record is for. The record path of `dynamicTests`
+      also appends one trailing test (`RECORD_SUMMARY_TEST_NAME`) that prints what the run wrote and
+      what it kept — a silent no-op task reads exactly like a task that never ran. The tally behind it
+      is keyed by fixture display name rather than a pair of counters, because `ViddikFilterTest`
+      calls `dynamicTests` in the same JVM and would otherwise reset or inflate them.
     `viddik.snapshotsDir`/`viddik.reportsDir` **system properties** (not env vars) override the
     defaults (`src/desktopTest/snapshots`, `build/reports/screenshots`) — needed because different
     consumer modules name their JVM target differently (`jvm()` vs `jvm("desktop")`), and
@@ -383,12 +397,13 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     recorded on Windows and verify green on Linux (and vice versa), so a failure here is a real
     regression, not rendering noise; re-record with `VIDDIK_RECORD_MODE=true` and visually check the
     PNG (and the `_DIFF.png` in `build/reports/screenshots/`) before trusting either outcome.
-    **Recording to add one fixture rewrites all of them**, and a golden that differs only within
-    tolerance still gets a new file: adding the two `@Preview`-driven fixtures rewrote
-    `Demo_Simple_Text*.png` by a single pixel at channel deviation 2 — noise the tolerance had been
-    absorbing on verify since the CMP 1.12 render-path change. Check `git status` after every record
-    and revert the goldens the change wasn't about; the committed ones were verified on three OSes,
-    and a local re-record quietly downgrades that to one.
+    **Recording used to rewrite all of them** — a golden differing only within tolerance still got a
+    new file, which is how adding the two `@Preview`-driven fixtures rewrote `Demo_Simple_Text*.png`
+    by a single pixel at channel deviation 2. Recording leaves those alone now (issue #29; measured on
+    this suite: 4 of 28 rewritten by a record on a clean tree, 0 after), so `git status` after a
+    record names what actually moved. Still worth a look at what it names: the committed goldens were
+    verified on three OSes, and a local re-record of one downgrades it to this machine's word.
+    `-Dviddik.forceRecord=true` brings the old behaviour back for a deliberate re-record of the set.
   - `ViddikDensityTest` (jvmTest) — pins the harness at density 1, i.e. `1.dp == 1px`, and pins that a
     font scale moves text without moving the canvas. The equality was
     accidental until `@Preview` support (`CaptureEngine` passed a pixel count into
@@ -421,7 +436,12 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     screenshot-test source set concept in a KMP+Android module. Adopting the plugin in a consumer
     means updating its README/CI to the new names.
   - `viddikRecord` sets `VIDDIK_RECORD_MODE=true` and `outputs.upToDateWhen { false }`, which is the
-    `--rerun` that used to be part of the incantation.
+    `--rerun` that used to be part of the incantation. It is a `ViddikRecordTask` — a subclass of
+    `ViddikScreenshotTask` that adds `--force` (`viddik.forceRecord`, carried by the same kind of
+    argument provider as `--component`, for the same "only known after configuration" reason), a
+    separate type so the flag is offered by the one task it means anything for. It is also the one
+    task with `STANDARD_OUT` in its `testLogging`: the engine's record summary is a `println` from a
+    test, and without that it lands in the HTML report where nobody is looking during a record.
   - `viddikDesignParity` is the same `ViddikScreenshotTask` type with `viddik.designParity=true`,
     `viddik.designDir` (extension `designDir`, default `<snapshotsDir>/design`), the two design
     tolerances, and `viddik.designStrict` = `designStrict` **or** `-Pviddik.designStrict` on the

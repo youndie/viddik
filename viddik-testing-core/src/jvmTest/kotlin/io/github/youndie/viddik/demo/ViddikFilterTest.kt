@@ -1,6 +1,7 @@
 package io.github.youndie.viddik.demo
 
 import io.github.youndie.viddik.annotations.ViddikComponent
+import io.github.youndie.viddik.core.RECORD_SUMMARY_TEST_NAME
 import io.github.youndie.viddik.core.ViddikEngine
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -31,35 +32,35 @@ class ViddikFilterTest {
 
     @Test
     fun `without a filter every component becomes a test`() {
-        assertEquals(3, ViddikEngine.dynamicTests(components).size)
+        assertEquals(3, selected(components).size)
     }
 
     @Test
     fun `a bare substring matches without naming the group`() {
         System.setProperty(FILTER_PROPERTY, "Card")
 
-        assertEquals(listOf("Widgets - Card"), ViddikEngine.dynamicTests(components).map { it.displayName })
+        assertEquals(listOf("Widgets - Card"), selected(components))
     }
 
     @Test
     fun `matching is case-insensitive`() {
         System.setProperty(FILTER_PROPERTY, "widgets - card")
 
-        assertEquals(listOf("Widgets - Card"), ViddikEngine.dynamicTests(components).map { it.displayName })
+        assertEquals(listOf("Widgets - Card"), selected(components))
     }
 
     @Test
     fun `a wildcard spans the group and the name`() {
         System.setProperty(FILTER_PROPERTY, "Buttons*Dark")
 
-        assertEquals(listOf("Buttons - Primary Dark"), ViddikEngine.dynamicTests(components).map { it.displayName })
+        assertEquals(listOf("Buttons - Primary Dark"), selected(components))
     }
 
     @Test
     fun `a substring can select several components`() {
         System.setProperty(FILTER_PROPERTY, "Primary")
 
-        assertEquals(2, ViddikEngine.dynamicTests(components).size)
+        assertEquals(2, selected(components).size)
     }
 
     @Test
@@ -83,8 +84,21 @@ class ViddikFilterTest {
     fun `a blank filter is treated as no filter`() {
         System.setProperty(FILTER_PROPERTY, "  ")
 
-        assertEquals(3, ViddikEngine.dynamicTests(components).size)
+        assertEquals(3, selected(components).size)
     }
+
+    /**
+     * The fixtures a run ended up with, by name.
+     *
+     * Without the run-level entry the recording shape appends after them: this suite is itself run
+     * under `VIDDIK_RECORD_MODE` whenever the goldens are re-recorded, and what it is about is which
+     * fixtures the filter selected, not how many tests the run has in total.
+     */
+    private fun selected(components: List<ViddikComponent>): List<String> =
+        ViddikEngine
+            .dynamicTests(components)
+            .map { it.displayName }
+            .filterNot { it == RECORD_SUMMARY_TEST_NAME }
 
     private fun component(
         group: String,

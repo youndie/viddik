@@ -52,9 +52,9 @@ public class ViddikPlugin : Plugin<Project> {
                 it.group = LifecycleBasePlugin.VERIFICATION_GROUP
                 it.description = "Verifies the recorded viddik screenshot goldens."
             }
-        target.tasks.register(RECORD_TASK, ViddikScreenshotTask::class.java) {
+        target.tasks.register(RECORD_TASK, ViddikRecordTask::class.java) {
             it.group = LifecycleBasePlugin.VERIFICATION_GROUP
-            it.description = "Records viddik screenshot goldens, overwriting the existing ones."
+            it.description = "Records viddik screenshot goldens that a verification would reject."
         }
         target.tasks.register(DESIGN_PARITY_TASK, ViddikScreenshotTask::class.java) {
             it.group = LifecycleBasePlugin.VERIFICATION_GROUP
@@ -329,6 +329,16 @@ public class ViddikPlugin : Plugin<Project> {
             // Recording is what the user asked for, not something to skip because the inputs happen
             // to look unchanged — this is the `--rerun` that used to be part of the incantation.
             task.outputs.upToDateWhen { false }
+            // The engine ends a recording run with a line saying how many goldens it wrote and how
+            // many it left alone, and that line is a `println` from a test. Without this it goes
+            // into the HTML report and a run that wrote nothing — the normal outcome on an unchanged
+            // tree — reads exactly like a run that never happened.
+            task.testLogging { logging -> logging.events(TestLogEvent.FAILED, TestLogEvent.STANDARD_OUT) }
+        }
+        // `--force` travels the same way `--component` does, and for the same reason: a command-line
+        // option is only known once the task has been configured.
+        tasks.named(RECORD_TASK, ViddikRecordTask::class.java).configure { task ->
+            task.jvmArgumentProviders.add(ViddikForceArgumentProvider(task.force))
         }
         val designDir = extension.designDir.getOrElse("$snapshotsDir/$DESIGN_SUBDIR")
         configureScreenshotTask(DESIGN_PARITY_TASK, extension, module, snapshotsDir, generateTests) { task ->

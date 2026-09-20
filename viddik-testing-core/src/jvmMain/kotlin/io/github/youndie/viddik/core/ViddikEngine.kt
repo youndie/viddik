@@ -2,10 +2,13 @@ package io.github.youndie.viddik.core
 
 import io.github.youndie.viddik.annotations.ViddikComponent
 import org.junit.jupiter.api.DynamicTest
+import java.awt.image.BufferedImage
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
 
 private const val RECORD_MODE_ENV = "VIDDIK_RECORD_MODE"
+private const val FORCE_RECORD_PROPERTY = "viddik.forceRecord"
 private const val FILTER_PROPERTY = "viddik.filter"
 private const val SNAPSHOTS_DIR_PROPERTY = "viddik.snapshotsDir"
 private const val REPORTS_DIR_PROPERTY = "viddik.reportsDir"
@@ -15,9 +18,54 @@ private const val MIN_MISMATCHED_PIXELS_PROPERTY = "viddik.minMismatchedPixels"
 private const val DEFAULT_SNAPSHOTS_DIR = "src/desktopTest/snapshots"
 private const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
 
+/** The run-level entry a recording run appends to its fixtures; see [ViddikEngine.recordTests]. */
+internal const val RECORD_SUMMARY_TEST_NAME: String = "Record summary"
+
+/**
+ * What a recording run did with each fixture it rendered, so the run can say it once at the end
+ * rather than a line per fixture.
+ *
+ * Keyed by display name and never cleared, rather than a pair of counters reset per run: this is a
+ * singleton — the generated `@TestFactory` reaches [ViddikEngine.verify] through its defaults and has
+ * nowhere to thread a per-run object through — and viddik's own suite calls
+ * [ViddikEngine.dynamicTests] from other test classes in the same JVM. Counters would be reset or
+ * inflated by those; per-fixture outcomes are simply overwritten by the run that produced them, and
+ * [summary] only reads the fixtures it is asked about.
+ */
+private object RecordTally {
+    private const val NAMES_SHOWN = 10
+
+    /** Display name to "was written", as opposed to kept. */
+    private val outcomes = ConcurrentHashMap<String, Boolean>()
+
+    fun wrote(displayName: String) {
+        outcomes[displayName] = true
+    }
+
+    fun keptOne(displayName: String) {
+        outcomes[displayName] = false
+    }
+
+    fun summary(displayNames: List<String>): String {
+        val written = displayNames.filter { outcomes[it] == true }
+        val kept = displayNames.count { outcomes[it] == false }
+        if (written.isEmpty()) {
+            return "viddik record: nothing to write — all $kept golden(s) already pass the " +
+                "verification. --force (or -D$FORCE_RECORD_PROPERTY=true) rewrites them anyway."
+        }
+        val names = written.take(NAMES_SHOWN).joinToString()
+        val rest = if (written.size > NAMES_SHOWN) ", +${written.size - NAMES_SHOWN} more" else ""
+        return "viddik record: wrote ${written.size} golden(s), kept $kept the verification " +
+            "already accepts. Written: $names$rest"
+    }
+}
+
 public object ViddikEngine {
     private val recordMode: Boolean
         get() = System.getenv(RECORD_MODE_ENV)?.toBooleanStrictOrNull() == true
+
+    private val forceRecordMode: Boolean
+        get() = System.getProperty(FORCE_RECORD_PROPERTY)?.toBooleanStrictOrNull() == true
 
     private val designParityMode: Boolean
         get() = System.getProperty(DESIGN_PARITY_PROPERTY)?.toBooleanStrictOrNull() == true
@@ -28,6 +76,14 @@ public object ViddikEngine {
     private val defaultReportsDir: File
         get() = File(System.getProperty(REPORTS_DIR_PROPERTY) ?: DEFAULT_REPORTS_DIR)
 
+    /**
+     * Renders the fixture and compares it against its golden — or, under `VIDDIK_RECORD_MODE`, writes
+     * that golden ([record], [recordGolden]).
+     *
+     * [record] and [force] are parameters and not only the environment variable and the
+     * `viddik.forceRecord` property they default to, so that the two modes are reachable from a test
+     * without setting an environment variable for the JVM that is running it.
+     */
     public fun verify(
         component: ViddikComponent,
         snapshotsDir: File = defaultSnapshotsDir,
@@ -43,6 +99,8 @@ public object ViddikEngine {
             System.getProperty(CHANNEL_TOLERANCE_PROPERTY)?.toIntOrNull() ?: DEFAULT_CHANNEL_TOLERANCE,
         minMismatchedPixels: Int =
             System.getProperty(MIN_MISMATCHED_PIXELS_PROPERTY)?.toIntOrNull() ?: DEFAULT_MIN_MISMATCHED_PIXELS,
+        record: Boolean = recordMode,
+        force: Boolean = forceRecordMode,
     ) {
         val fileName = fileNameFor(component)
         val goldenFile = File(snapshotsDir, fileName)
@@ -54,9 +112,16 @@ public object ViddikEngine {
                 content = component.content,
             )
 
-        if (recordMode) {
-            snapshotsDir.mkdirs()
-            ImageIO.write(actual, "png", goldenFile)
+        if (record) {
+            recordGolden(
+                component = component,
+                actual = actual,
+                goldenFile = goldenFile,
+                force = force,
+                tolerancePercent = tolerancePercent,
+                channelTolerance = channelTolerance,
+                minMismatchedPixels = minMismatchedPixels,
+            )
             return
         }
 
@@ -86,6 +151,53 @@ public object ViddikEngine {
                     "Diff saved to ${diffFile.path}",
             )
         }
+    }
+
+    /**
+     * The recording half of [verify]: writes the golden only when the render is one the verification
+     * would reject.
+     *
+     * Recording used to write every fixture unconditionally, and that is what makes a record on an
+     * unchanged tree produce a diff — the render and the golden differ by exactly the residue the
+     * comparison exists to absorb (a channel of anti-aliasing, a pixel of cross-OS layout), and a PNG
+     * written from it is a new file even though it is the same picture to every check that looks at
+     * it. Measured on this repository's own 28 fixtures: a record on a clean tree rewrote 4 of them,
+     * all 4 green under `viddikVerify` before and after. Downstream, where the goldens are in Git LFS,
+     * each such run is also a fresh blob per rewritten file.
+     *
+     * Comparing first, with the same differ and the same three thresholds the verification uses, makes
+     * the rule exact: a golden the verification accepts is a golden the recording leaves alone, so what
+     * a record leaves behind in `git status` is what actually moved.
+     *
+     * [force] is the way back to writing everything, for the re-record after a Compose, font or
+     * renderer change — there "would the old comparison accept this" is not the question being asked.
+     */
+    private fun recordGolden(
+        component: ViddikComponent,
+        actual: BufferedImage,
+        goldenFile: File,
+        force: Boolean,
+        tolerancePercent: Double,
+        channelTolerance: Int,
+        minMismatchedPixels: Int,
+    ) {
+        val existing =
+            if (force) {
+                null
+            } else {
+                // A golden that cannot be read is one to replace, not one to fail the recording on:
+                // recording is how a half-written or corrupted file is meant to be repaired.
+                goldenFile.takeIf(File::exists)?.let { runCatching { ImageIO.read(it) }.getOrNull() }
+            }
+        if (existing != null) {
+            val diff = ImageDiffer.diff(existing, actual, channelTolerance)
+            if (diff.matches(tolerancePercent, minMismatchedPixels)) {
+                RecordTally.keptOne(displayNameFor(component))
+                return
+            }
+        }
+        writePng(actual, goldenFile)
+        RecordTally.wrote(displayNameFor(component))
     }
 
     /**
@@ -215,10 +327,28 @@ public object ViddikEngine {
         }
 
         if (designParityMode) return designParityTests(selected, components)
+        if (recordMode) return recordTests(selected)
 
         return selected.map { component ->
             DynamicTest.dynamicTest(displayNameFor(component)) { verify(component) }
         }
+    }
+
+    /**
+     * The `VIDDIK_RECORD_MODE` shape of the run: the same fixture-per-test list, plus one trailing
+     * test that says what the run wrote.
+     *
+     * A recording that leaves an unchanged tree alone — see [recordGolden] — is silent by
+     * construction, and a task that writes nothing and says nothing reads the same as one that never
+     * ran. The summary is the run saying which of the two it was.
+     */
+    private fun recordTests(selected: List<ViddikComponent>): List<DynamicTest> {
+        val names = selected.map(::displayNameFor)
+        val perFixture =
+            selected.map { component ->
+                DynamicTest.dynamicTest(displayNameFor(component)) { verify(component) }
+            }
+        return perFixture + DynamicTest.dynamicTest(RECORD_SUMMARY_TEST_NAME) { println(RecordTally.summary(names)) }
     }
 
     /**
