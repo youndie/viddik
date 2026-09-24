@@ -48,8 +48,8 @@ VIDDIK_RECORD_MODE=true ./gradlew :viddik-testing-core:jvmTest --tests "*runAllS
 
 CI: `.github/workflows/verify-goldens.yaml` runs `:viddik-testing-core:jvmTest` on every pull request
 across `ubuntu-latest` / `macos-latest` / `windows-latest` (`fail-fast: false`, uploads the
-`_DIFF.png` artifacts on failure), `samples.yaml` builds the consumer build — `:fixtures:viddikRecord`
-and the Android app on Linux, the iOS executable on a mac — and `publish-viddik-snapshot.yaml`
+`_DIFF.png` artifacts on failure), `samples.yaml` builds the consumer build — `:fixtures:viddikRecord`,
+`:goldens-only:build` and the Android app on Linux, the iOS executable on a mac — and `publish-viddik-snapshot.yaml`
 publishes on push to `main`. A release to Maven Central is none of these: it is a dispatch of
 `central.yaml` in **youndie/sborka**, described under "Publishing" below.
 Dependencies are batched weekly by Renovate (`renovate.json5`) — Kotlin and KSP move together, and
@@ -565,9 +565,13 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     generated there can be opened on the machine that ran the build and nowhere else.
     - The plugin adds the processor to `kspCommonMainMetadata`, puts
       `build/generated/ksp/metadata/commonMain/kotlin` on `commonMain`, and adds
-      `viddik-annotations` to `commonMainApi`. The srcDir is registered unconditionally — an srcDir
-      that does not exist contributes no sources, and it has to be in place before any compilation is
-      configured, which is earlier than the extension is final.
+      `viddik-annotations` to `commonMainApi`. The srcDir has to be in place before any compilation
+      is configured, which is earlier than the extension is final, so it is registered as a
+      *provider* that is empty while the feature is off. It used to be the plain path, on the theory
+      that an srcDir that does not exist contributes no sources — and it broke every KMP module
+      with KSP and the feature off (issue #44): `kspCommonMainKotlinMetadata` runs there even with an
+      empty configuration, Gradle matches outputs to inputs by location, and the per-target KSP
+      tasks, not ordered after it, fail the build. `samples/goldens-only` is that shape.
     - **Two sets of task dependencies, not one.** Every `KotlinCompilationTask` is ordered after
       `kspCommonMainKotlinMetadata`, and so is every task whose name starts with `ksp` — the
       per-target KSP tasks read `commonMain` too, and Gradle fails the build outright with "uses this
@@ -601,6 +605,11 @@ at whatever version `gradle.properties` currently states.
 - `samples/fixtures` — fixtures in `commonMain`, `viddik { showroomTargets = true }`, and the iOS
   executable (`iosSimulatorArm64 { binaries.executable { entryPoint = "...showroomMain" } }`). This is
   the only place the commonMain-registry path is compiled at all.
+- `samples/goldens-only` — the other shape and the common one: `jvm("desktop")` plus `iosArm64()`,
+  fixtures in `desktopTest`, every setting at its default. It is here because the feature-off path
+  once put the showroom directory on `commonMain` (issue #44), and `:fixtures`, with the feature on,
+  could not see it. CI runs `build` on it, not only `viddikRecord`: the failure needs
+  `kspCommonMainKotlinMetadata` in the task graph, and a record alone does not schedule it.
 - `samples/android-app` — `com.android.application`. **No `org.jetbrains.kotlin.android`**: AGP 9 has
   Kotlin support built in and refuses the plugin by name if you add it. Plugin versions are declared
   once in `samples/build.gradle.kts` with `apply false`, because Gradle rejects a versioned request

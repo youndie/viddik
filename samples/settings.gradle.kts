@@ -68,3 +68,4 @@ includeBuild("..")
 
 include(":fixtures")
 include(":android-app")
+include(":goldens-only")

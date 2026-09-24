@@ -284,10 +284,16 @@ public class ViddikPlugin : Plugin<Project> {
      */
     private fun Project.wireCommonRegistry(extension: ViddikExtension) {
         val sourceSets = extensions.getByType(KotlinProjectExtension::class.java).sourceSets
-        // Registered whether or not the feature is on: an srcDir that does not exist contributes no
-        // sources, and this has to be in place before any compilation is configured, which is earlier
-        // than `showroomTargets` is final.
-        sourceSets.getByName(COMMON_SOURCE_SET).kotlin.srcDir(COMMON_GENERATED_DIR)
+        // Registered now, because it has to be in place before any compilation is configured, and that
+        // is earlier than `showroomTargets` is final, so it is registered as a provider that is empty
+        // while the feature is off. Registering the plain path is not harmless even though the
+        // directory does not exist: `kspCommonMainKotlinMetadata` is scheduled in every KMP module
+        // with KSP, Gradle matches outputs to inputs by location, and without the ordering below every
+        // per-target KSP task fails with "uses this output of task ... without declaring a dependency"
+        // (issue #44). `samples/goldens-only` is the module that shape builds in.
+        sourceSets.getByName(COMMON_SOURCE_SET).kotlin.srcDir(
+            extension.showroomTargets.map { on -> if (on) listOf(COMMON_GENERATED_DIR) else emptyList() },
+        )
 
         addLater(COMMON_KSP_CONFIGURATION, extension, extension.showroomTargets) { version ->
             listOf("${ViddikLayout.forMultiplatform("desktop", "desktopTest").coordinates.processor}:$version")

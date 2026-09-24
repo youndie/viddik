@@ -36,6 +36,13 @@ jobs:
         working-directory: samples
         run: ../gradlew :fixtures:viddikRecord --no-daemon
 
+      # `build`, not `viddikRecord`: the module's settings are all defaults, and what it guards
+      # (issue #44) only fails when `kspCommonMainKotlinMetadata` is in the same task graph as the
+      # per-target KSP tasks, which a record alone does not arrange.
+      - name: Build a module with the showroom off
+        working-directory: samples
+        run: ../gradlew :goldens-only:build --no-daemon
+
       - name: Build the Android showroom app
         working-directory: samples
         run: ../gradlew :android-app:assembleDebug --no-daemon
