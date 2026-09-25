@@ -60,7 +60,7 @@ signal working, not a flake.
 While iterating on viddik itself, downstream consumers resolve `io.github.youndie.viddik:viddik-*` via
 `mavenLocal()` — after any change here, `publishToMavenLocal` before rebuilding them (the other two
 sources, Central and `wip`, are under "Consumers"). Versions are bumped by hand in `gradle.properties`
-(plain `version`, currently `0.6.0`); Gradle/consumers cache by exact version+build hash so a
+(plain `version`, currently `0.6.1`); Gradle/consumers cache by exact version+build hash so a
 republish under the same version is picked up by build cache invalidation, not by version diffing —
 if a consumer's build looks stale after a republish, `--no-build-cache` or bump the version.
 
@@ -903,15 +903,15 @@ at `https://reposilite.kotlin.website/snapshots`. `REPOSILITE_USER` / `REPOSILIT
 Gradle properties; CI passes them as `ORG_GRADLE_PROJECT_*` environment variables, which Gradle maps
 to properties on its own.
 
-**The version is the plain `version` key** in `gradle.properties` (`0.6.0`) — `viddik.version` was one
+**The version is the plain `version` key** in `gradle.properties` (`0.6.1`) — `viddik.version` was one
 more name for the same thing — and `-PVERSION` wins over it when given. That is the whole difference
 between the three channels:
 
 | | version | how |
 |---|---|---|
-| `wip` snapshots | `0.6.0.<run number>` | push to `main`, `publish-viddik-snapshot.yaml` |
-| Maven Central | `0.6.0` | dispatch `central.yaml` in `youndie/sborka` |
-| `~/.m2` | `0.6.0` | `./gradlew publishToMavenLocal`, no credentials |
+| `wip` snapshots | `0.6.1.<run number>` | push to `main`, `publish-viddik-snapshot.yaml` |
+| Maven Central | `0.6.1` | dispatch `central.yaml` in `youndie/sborka` |
+| `~/.m2` | `0.6.1` | `./gradlew publishToMavenLocal`, no credentials |
 
 `sborka.central=true` in `gradle.properties` is the whole of what makes the Central path possible: the
 convention reads it and applies `com.vanniktech.maven.publish`, which is what produces the javadoc jar
@@ -923,7 +923,7 @@ plainly: the run appears in sborka's Actions tab rather than in this repository'
 
 ```bash
 gh workflow run central.yaml --repo youndie/sborka \
-  -f repository=youndie/viddik -f ref=main -f version=0.6.0 \
+  -f repository=youndie/viddik -f ref=main -f version=0.6.1 \
   -f runner=ubuntu-latest -f konan-cache=true -f gate=true
 ```
 
@@ -955,7 +955,7 @@ one a given consumer is wired for is in its own `settings.gradle.kts`:
   which does not look at Central unless told to) and `google()` beside the second, for the
   `androidx.*` artifacts Compose Multiplatform's desktop variants pull in.
 - **`wip`** (`https://reposilite.kotlin.website/snapshots`, read is anonymous) — every push to `main`
-  as `0.6.0.<run number>`. This is where a version lives while it is being tried out in a consumer
+  as `0.6.1.<run number>`. This is where a version lives while it is being tried out in a consumer
   before it is worth a release.
 - **`mavenLocal()`** — a fresh clone needs `publishToMavenLocal` run by hand first; there is no CI
   wiring that publishes viddik before building a consumer.
