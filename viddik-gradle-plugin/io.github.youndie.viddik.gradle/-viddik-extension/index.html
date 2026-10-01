@@ -205,6 +205,21 @@
               </div>
             </div>
           </div>
+<a data-name="-1700109872%2FProperties%2F180313729" anchor-label="floorChannelDelta" id="-1700109872%2FProperties%2F180313729" data-filterable-set=":viddik-gradle-plugin/main"></a>
+          <div class="table-row table-row_content" data-filterable-current=":viddik-gradle-plugin/main" data-filterable-set=":viddik-gradle-plugin/main">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="floor-channel-delta.html"><span>floor</span><wbr><span>Channel</span><wbr><span><span>Delta</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1700109872%2FProperties%2F180313729"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-gradle-plugin/main"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">val </span><a href="floor-channel-delta.html">floorChannelDelta</a><span class="token operator">: </span><span data-unresolved-link="org.gradle.api.provider/Property///PointingToDeclaration/">Property</span><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">The largest single-channel difference a pixel may have and still be absorbed by <a href="min-mismatched-pixels.html">minMismatchedPixels</a>; one past it fails the comparison however few there are. Unset by default, leaving viddik's own 96 — twice the measured cross-OS residue (delta 47), and well short of a changed glyph (a full stop: 12 px at delta 223). <code class="lang-kotlin">255</code> restores a floor that counts pixels only. Becomes the <code class="lang-kotlin">viddik.floorChannelDelta</code> system property.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
 <a data-name="82219813%2FProperties%2F180313729" anchor-label="generateTests" id="82219813%2FProperties%2F180313729" data-filterable-set=":viddik-gradle-plugin/main"></a>
           <div class="table-row table-row_content" data-filterable-current=":viddik-gradle-plugin/main" data-filterable-set=":viddik-gradle-plugin/main">
             <div class="main-subrow keyValue ">
@@ -261,6 +276,21 @@
               <div>
                 <div class="title">
                   <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-gradle-plugin/main"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">val </span><a href="jvm-target.html">jvmTarget</a><span class="token operator">: </span><span data-unresolved-link="org.gradle.api.provider/Property///PointingToDeclaration/">Property</span><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Name of the Kotlin JVM target that carries the screenshot fixtures, e.g. <code class="lang-kotlin">"desktop"</code> for <code class="lang-kotlin">jvm("desktop")</code> or <code class="lang-kotlin">"jvm"</code> for an unnamed <code class="lang-kotlin">jvm()</code>.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1956489061%2FProperties%2F180313729" anchor-label="minMismatchedPixels" id="1956489061%2FProperties%2F180313729" data-filterable-set=":viddik-gradle-plugin/main"></a>
+          <div class="table-row table-row_content" data-filterable-current=":viddik-gradle-plugin/main" data-filterable-set=":viddik-gradle-plugin/main">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="min-mismatched-pixels.html"><span>min</span><wbr><span>Mismatched</span><wbr><span><span>Pixels</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1956489061%2FProperties%2F180313729"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":viddik-gradle-plugin/main"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">val </span><a href="min-mismatched-pixels.html">minMismatchedPixels</a><span class="token operator">: </span><span data-unresolved-link="org.gradle.api.provider/Property///PointingToDeclaration/">Property</span><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">How many mismatched pixels a comparison absorbs whatever the fixture's size — the floor beside <a href="tolerance-percent.html">tolerancePercent</a>, which on its own is unfair to small fixtures. Unset by default, leaving viddik's own 16. <code class="lang-kotlin">0</code> turns the floor off. Becomes the <code class="lang-kotlin">viddik.minMismatchedPixels</code> system property.</p></div></div></div>
                 </div>
               </div>
             </div>
