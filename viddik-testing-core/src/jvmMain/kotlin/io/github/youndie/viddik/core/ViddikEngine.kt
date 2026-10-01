@@ -15,6 +15,7 @@ private const val REPORTS_DIR_PROPERTY = "viddik.reportsDir"
 private const val TOLERANCE_PERCENT_PROPERTY = "viddik.tolerancePercent"
 private const val CHANNEL_TOLERANCE_PROPERTY = "viddik.channelTolerance"
 private const val MIN_MISMATCHED_PIXELS_PROPERTY = "viddik.minMismatchedPixels"
+private const val FLOOR_CHANNEL_DELTA_PROPERTY = "viddik.floorChannelDelta"
 private const val DEFAULT_SNAPSHOTS_DIR = "src/desktopTest/snapshots"
 private const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
 
@@ -102,6 +103,8 @@ public object ViddikEngine {
             System.getProperty(CHANNEL_TOLERANCE_PROPERTY)?.toIntOrNull() ?: DEFAULT_CHANNEL_TOLERANCE,
         minMismatchedPixels: Int =
             System.getProperty(MIN_MISMATCHED_PIXELS_PROPERTY)?.toIntOrNull() ?: DEFAULT_MIN_MISMATCHED_PIXELS,
+        floorChannelDelta: Int =
+            System.getProperty(FLOOR_CHANNEL_DELTA_PROPERTY)?.toIntOrNull() ?: DEFAULT_FLOOR_CHANNEL_DELTA,
         record: Boolean = recordMode,
         force: Boolean = forceRecordMode,
     ) {
@@ -124,6 +127,7 @@ public object ViddikEngine {
                 tolerancePercent = tolerancePercent,
                 channelTolerance = channelTolerance,
                 minMismatchedPixels = minMismatchedPixels,
+                floorChannelDelta = floorChannelDelta,
             )
             return
         }
@@ -136,7 +140,7 @@ public object ViddikEngine {
         }
 
         val expected = ImageIO.read(goldenFile)
-        val diff = ImageDiffer.diff(expected, actual, channelTolerance)
+        val diff = ImageDiffer.diff(expected, actual, channelTolerance, floorChannelDelta)
         if (!diff.matches(tolerancePercent, minMismatchedPixels)) {
             reportsDir.mkdirs()
             val diffFile = File(reportsDir, fileName.removeSuffix(".png") + "_DIFF.png")
@@ -149,8 +153,9 @@ public object ViddikEngine {
                 "Screenshot mismatch for ${component.group}/${component.name}: " +
                     "${diff.mismatchedPixels}/${diff.totalPixels} px differ (${"%.2f".format(
                         diff.mismatchPercent,
-                    )}%, " +
-                    "tolerance $tolerancePercent%$toleranceOrigin or $minMismatchedPixels px). " +
+                    )}%, max channel delta ${diff.maxChannelDelta}; " +
+                    "tolerance $tolerancePercent%$toleranceOrigin or $minMismatchedPixels px " +
+                    "within a channel delta of $floorChannelDelta). " +
                     "Diff saved to ${diffFile.path}",
             )
         }
@@ -183,6 +188,7 @@ public object ViddikEngine {
         tolerancePercent: Double,
         channelTolerance: Int,
         minMismatchedPixels: Int,
+        floorChannelDelta: Int,
     ) {
         val existing =
             if (force) {
@@ -193,7 +199,7 @@ public object ViddikEngine {
                 goldenFile.takeIf(File::exists)?.let { runCatching { ImageIO.read(it) }.getOrNull() }
             }
         if (existing != null) {
-            val diff = ImageDiffer.diff(existing, actual, channelTolerance)
+            val diff = ImageDiffer.diff(existing, actual, channelTolerance, floorChannelDelta)
             if (diff.matches(tolerancePercent, minMismatchedPixels)) {
                 RecordTally.keptOne(displayNameFor(component))
                 return

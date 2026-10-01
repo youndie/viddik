@@ -493,6 +493,8 @@ public class ViddikPlugin : Plugin<Project> {
             extension.reportsDir.orNull?.let { task.systemProperty(REPORTS_DIR_PROPERTY, it) }
             extension.tolerancePercent.orNull?.let { task.systemProperty(TOLERANCE_PERCENT_PROPERTY, it) }
             extension.channelTolerance.orNull?.let { task.systemProperty(CHANNEL_TOLERANCE_PROPERTY, it) }
+            extension.minMismatchedPixels.orNull?.let { task.systemProperty(MIN_MISMATCHED_PIXELS_PROPERTY, it) }
+            extension.floorChannelDelta.orNull?.let { task.systemProperty(FLOOR_CHANNEL_DELTA_PROPERTY, it) }
             extension.sceneReuse.orNull?.let { task.systemProperty(SCENE_REUSE_PROPERTY, it) }
             extension.glyphCheck.orNull?.let { task.systemProperty(GLYPH_CHECK_PROPERTY, it) }
             extension.glyphCheckFont.orNull?.let { task.systemProperty(GLYPH_CHECK_FONT_PROPERTY, it) }
@@ -560,6 +562,8 @@ public class ViddikPlugin : Plugin<Project> {
         const val REPORTS_DIR_PROPERTY = "viddik.reportsDir"
         const val TOLERANCE_PERCENT_PROPERTY = "viddik.tolerancePercent"
         const val CHANNEL_TOLERANCE_PROPERTY = "viddik.channelTolerance"
+        const val MIN_MISMATCHED_PIXELS_PROPERTY = "viddik.minMismatchedPixels"
+        const val FLOOR_CHANNEL_DELTA_PROPERTY = "viddik.floorChannelDelta"
         const val SCENE_REUSE_PROPERTY = "viddik.sceneReuse"
         const val GLYPH_CHECK_PROPERTY = "viddik.glyphCheck"
         const val GLYPH_CHECK_FONT_PROPERTY = "viddik.glyphCheckFont"

@@ -293,6 +293,18 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     slack, originally for lossless-codec decode differences between platform Skia builds, also covers
     the last few glyph-outline quantization pixels). It was 0.5 while cross-platform text rendering
     was unfixed — see "Cross-platform golden portability" for why it no longer needs to be.
+    - **The pixel floor only absorbs faint pixels.** `DEFAULT_MIN_MISMATCHED_PIXELS = 16` passes a
+      comparison whatever the share — but only when no mismatched pixel is past
+      `DEFAULT_FLOOR_CHANNEL_DELTA = 96` (`DiffResult.pronouncedPixels == 0`; out-of-bounds pixels
+      always count as pronounced). Before that the floor counted pixels only, and measured in
+      screenshot-bench (01.10.2026) a full stop appended to a heading — 12–13 px at a channel delta of
+      223 — passed verify on 8 of 10 fixtures even at zero tolerance, while the residue it exists for
+      is faint: Linux-recorded goldens on macOS, N=50, at most 13 px at delta 47. This repository's own
+      goldens measure delta ≤ 2 on Linux and macOS. 96 is twice the 47. Both are configurable:
+      `viddik.minMismatchedPixels` / `viddik.floorChannelDelta`, the plugin's `minMismatchedPixels` /
+      `floorChannelDelta`; `floorChannelDelta = 255` is the old count-only floor. The share
+      (`tolerancePercent`) still counts every pixel alike — a per-fixture tolerance is how the
+      filtered-layer hole, whose residue is *not* faint, is paid for.
   - **Per-fixture tolerance** (0.3.1). `ViddikComponent.tolerancePercent: Double?` carries what
     `@ViddikScreenshot(tolerancePercent = ...)` asked for, and `ViddikEngine.verify` resolves
     component → `viddik.tolerancePercent` system property → `DEFAULT_TOLERANCE_PERCENT` in its own
