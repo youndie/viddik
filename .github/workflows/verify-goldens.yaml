@@ -30,8 +30,8 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v5
 
-      # Java and Gradle in one step. The action installs both 21 and 25: Gradle runs on the newer
-      # one while the toolchain compiles against `sborka.jvmToolchain`, and a missing toolchain is
+      # Java and Gradle in one step. The action installs both 21 and 25: the toolchain is sborka's
+      # default (25) while the bytecode follows `sborka.jvmFloor` (21), and a missing toolchain is
       # either a download nobody asked for or a failure naming a vendor.
       - uses: youndie/sborka/.github/actions/setup-kotlin@main
 
