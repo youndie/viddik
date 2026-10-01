@@ -318,20 +318,22 @@ public class ViddikPlugin : Plugin<Project> {
             tasks.withType(KspAATask::class.java).configureEach { ksp ->
                 if (ksp.name == kspTaskName) ksp.dependsOn(snapshot)
             }
+            // By path, and through this project's own container: under isolated projects a project
+            // may not touch tasks other projects put in the graph, which `graph.allTasks` does.
+            val kspTaskPath = "${path.removeSuffix(":")}:$kspTaskName"
             gradle.taskGraph.whenReady { graph ->
-                if (!extension.kspDeclarationSnapshot.get()) return@whenReady
-                graph.allTasks
-                    .filterIsInstance<KspAATask>()
-                    .filter { it.project == this && it.name == kspTaskName }
-                    .forEach { ksp ->
-                        val libraries = ksp.kspConfig.libraries
-                        val declared = files(*libraries.from.toTypedArray())
-                        val real = mainClasses.files
-                        libraries.setFrom(
-                            files(Callable { declared.filter { it !in real } }),
-                            snapshot.flatMap { it.outputDir },
-                        )
-                    }
+                if (!extension.kspDeclarationSnapshot.get() || !graph.hasTask(kspTaskPath)) return@whenReady
+                val libraries =
+                    tasks
+                        .named(kspTaskName, KspAATask::class.java)
+                        .get()
+                        .kspConfig.libraries
+                val declared = files(*libraries.from.toTypedArray())
+                val real = mainClasses.files
+                libraries.setFrom(
+                    files(Callable { declared.filter { it !in real } }),
+                    snapshot.flatMap { it.outputDir },
+                )
             }
         }
     }

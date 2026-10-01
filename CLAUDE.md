@@ -420,7 +420,10 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       after an earlier `configureEach` — which therefore sees an empty classpath, and anything it sets
       is appended to. A nested `tasks.named(...).configure` from there is rejected outright. The
       `dependsOn` on the snapshot task is declared in `configureEach`, because the graph is built by
-      `whenReady`. Works with the configuration cache (stored and reused).
+      `whenReady`. Works with the configuration cache (stored and reused). Under isolated projects
+      `whenReady` is allowed but `graph.allTasks` is not — it hands a project tasks created by other
+      projects — so the task is found by path (`graph.hasTask`) and fetched from the project's own
+      container.
   - `ViddikEngine` — the record/verify harness (Paparazzi-equivalent). `VIDDIK_RECORD_MODE` env var
     (not a Gradle property — set it in the shell/CI step) toggles write-golden vs compare-and-fail.
     - **Recording writes only what a verification would reject** (`recordGolden`, issue #29). It renders
