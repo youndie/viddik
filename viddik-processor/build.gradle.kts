@@ -10,6 +10,20 @@ dependencies {
     implementation("com.google.devtools.ksp:symbol-processing-api:${wip.versions.ksp.get()}")
     implementation(libs.kotlinpoet)
     implementation(libs.kotlinpoet.ksp)
+
+    // RegistryCompileTest compiles what the emitter writes, in-process and with the Compose plugin:
+    // the 64 KB method limit is reached in bytecode, and only the composable lambdas the plugin
+    // generates make the bytecode the size it is in a consumer. The registry names
+    // `ViddikComponent` and `LocalViddikDarkTheme`, hence the annotations — whose JVM variant
+    // brings the Compose runtime along.
+    testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:${wip.versions.kotlin.get()}")
+    testImplementation("org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:${wip.versions.kotlin.get()}")
+    testImplementation(projects.viddikAnnotations)
+}
+
+// A Kotlin compilation of a few thousand functions inside the test JVM; the default 512 MB is not it.
+tasks.test {
+    maxHeapSize = "2g"
 }
 
 // How a fixture's name, size and theme are decided is the part of this module worth pinning, and
