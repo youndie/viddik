@@ -16,6 +16,29 @@ processor into a component registry, then either captured to PNG and diffed on a
 (`ViddikEngine`, record/verify) or shown live in a portable browser (`ViddikShowroom`) — in a desktop
 window, and from 0.5.0 in an Android or iOS app reading the same registry.
 
+### ⚖️ How it compares
+
+Measured in [screenshot-bench](https://github.com/youndie/screenshot-bench): the same generated
+composables at 360×640, each tool set up as its own documentation says, one build machine
+(20 cores, Linux), medians. viddik 0.6.1.45 for the speed rows, which is the code of 0.7.0 there.
+
+| | viddik | Roborazzi, desktop | Roborazzi, Robolectric | Paparazzi |
+|---|---|---|---|---|
+| Renderer | Skiko | Skiko | Android framework | layoutlib |
+| Verify 1000 screenshots, one JVM | 25.1 s | 29.6 s | 41.5 s | 28.7 s |
+| Verify 2000 screenshots, four forks | 14.8 s | 17.9 s | 35.9 s | 22.7 s |
+| Edit a component, record one golden (N=1000) | 3.3 s | 2.8 s | 7.4 s | 5.5 s |
+| Linux goldens verified on macOS (N=50) | 50/50 pass, 38 byte-identical | 0/50 pass | 50/50, byte-identical | 50/50, byte-identical |
+| A full stop added to a heading, default settings | 2/10 caught | 10/10 | 10/10 | 2/10 |
+
+What the rows say: on large suites the two Skiko tools and Paparazzi are within a few seconds of
+each other, and Robolectric is the slowest; the edit-and-record cycle is where they differ most.
+viddik's goldens travel between operating systems on Skiko, where Roborazzi's differ everywhere —
+the Android renderers get that for free. The price is a tolerance: at the default 0.05% share a
+12-pixel change on a full screen passes; with `tolerancePercent = 0.0` it is caught 10/10 and the
+cross-OS goldens still pass, because the pixel floor only absorbs faint pixels (see
+[Cross-platform goldens](#%EF%B8%8F-cross-platform-goldens-fonts-ci-tolerance)).
+
 ### 📦 Installation
 
 From 0.4.0 viddik is on Maven Central as `io.github.youndie.viddik`. Up to 0.3.3 it was
