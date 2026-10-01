@@ -82,6 +82,15 @@ class DeclarationSnapshotTest {
         assertEquals(1, bodies, "ListScreen keeps a body; the synthetic lambda is gone")
     }
 
+    @Test
+    fun `a file that is not a class passes through so kotlin_module keeps top-level lookups working`() {
+        val module = byteArrayOf(0, 0, 0, 3, 1, 2, 3)
+        assertContentEquals(module, DeclarationSnapshot.ofEntry("META-INF/components.kotlin_module", module))
+
+        val facade = facade(literal = "Payments", startOffset = 3701, line = 97)
+        assertContentEquals(snapshot(facade), DeclarationSnapshot.ofEntry("bench/TemplatesKt.class", facade))
+    }
+
     private fun snapshot(bytes: ByteArray): ByteArray = assertNotNull(DeclarationSnapshot.of(bytes))
 
     /**

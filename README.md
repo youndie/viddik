@@ -334,7 +334,9 @@ declarations they see, never on a function body — but KSP re-runs whenever a c
 changes, and with Compose that is almost every edit: the compiler records each composable's source
 offsets in `@FunctionKeyMeta`, so retyping one string moves every composable after it. The plugin
 therefore hands the test source set's KSP run a snapshot of the main classes with the bodies, debug
-information and those offsets taken out, rewritten only when a declaration changes. Measured on a
+information and those offsets taken out, rewritten only when a declaration changes — and does the
+same, through an artifact transform, for the other modules of the build on the test classpath, so a
+module of fixtures that draws its components from sibling modules gains as much. Measured on a
 module of 1000 fixtures: editing a component and recording one golden takes ~3.0 s instead of
 ~4.1 s, and a new or changed declaration still re-runs KSP as before. Set
 `kspDeclarationSnapshot = false` if another processor in the same KSP run needs the real classes.
