@@ -406,6 +406,21 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       quietly broken since it shipped. The plugin now also declares both as `inputs.property` on
       every `ksp*` task. A measurement that changes one of these settings must check that the
       generated classes actually changed; `--no-build-cache` is what exposed it.
+  - **KSP reads a declarations-only snapshot of the main classes** (`kspDeclarationSnapshot`, on by
+    default; `ViddikKspDeclarationsTask`, one `viddik<KspTask>Declarations` per JVM target). KSP re-runs
+    on any change to a class on its classpath, and the Compose compiler puts
+    `@FunctionKeyMeta(startOffset, endOffset)` on every composable, so retyping a literal changes every
+    composable after it — measured on a 1000-fixture module, `kspTestKotlin` re-ran on every
+    component edit (~0.8 s, `Dirty / All: 100%` in `-Pksp.incremental.log=true`) and produced the same
+    registry. The snapshot keeps signatures, fields and constants, annotations, Kotlin metadata and
+    resources, drops bodies, debug info, `FunctionKeyMeta`, synthetic and function-local classes, and
+    rewrites a file only when its snapshot changes. `DeclarationSnapshotTest` pins both directions.
+    - **The classpath swap lives in `taskGraph.whenReady`, not `configureEach`.** KSP fills
+      `kspConfig.libraries` in the action it registers its task with, and Gradle runs that action
+      after an earlier `configureEach` — which therefore sees an empty classpath, and anything it sets
+      is appended to. A nested `tasks.named(...).configure` from there is rejected outright. The
+      `dependsOn` on the snapshot task is declared in `configureEach`, because the graph is built by
+      `whenReady`. Works with the configuration cache (stored and reused).
   - `ViddikEngine` — the record/verify harness (Paparazzi-equivalent). `VIDDIK_RECORD_MODE` env var
     (not a Gradle property — set it in the shell/CI step) toggles write-golden vs compare-and-fail.
     - **Recording writes only what a verification would reject** (`recordGolden`, issue #29). It renders

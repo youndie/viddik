@@ -92,6 +92,7 @@ viddik {
     generateTests = false                      // registry only, no JUnit5 tests (Android app modules)
     excludeFromTestTask = false                // default: true — see below
     showroomTargets = true                     // default: false — the registry for Android and iOS too
+    kspDeclarationSnapshot = false             // default: true — see "Editing a component" below
     addDependencies = false                    // declare the viddik artifacts yourself instead
     viddikVersion = "<VERSION>"                // default: the plugin's own version
 }
@@ -327,6 +328,16 @@ every Nth fixture at runtime, and sets a matching `maxParallelForks` on `viddikV
 ```kotlin
 viddik { shards = 1 }   // two by default; one is right for a small suite
 ```
+
+**Editing a component does not re-run KSP.** The registry depends on the fixtures and on the
+declarations they see, never on a function body — but KSP re-runs whenever a class on its classpath
+changes, and with Compose that is almost every edit: the compiler records each composable's source
+offsets in `@FunctionKeyMeta`, so retyping one string moves every composable after it. The plugin
+therefore hands the test source set's KSP run a snapshot of the main classes with the bodies, debug
+information and those offsets taken out, rewritten only when a declaration changes. Measured on a
+module of 1000 fixtures: editing a component and recording one golden takes ~3.0 s instead of
+~4.1 s, and a new or changed declaration still re-runs KSP as before. Set
+`kspDeclarationSnapshot = false` if another processor in the same KSP run needs the real classes.
 
 **Measure before changing it, in either direction.** A fork costs its own JVM start plus Compose and
 skiko class loading — about 1.9 s, against roughly 7 ms per capture once the scene is shared — so a
