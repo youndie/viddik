@@ -6,50 +6,30 @@
 [![API Docs](https://img.shields.io/badge/docs-Dokka-blue?logoColor=white)](https://youndie.github.io/viddik/)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**screenshot-testing toolkit for Compose Multiplatform** — a showkase + paparazzi analog that renders
-through a real **Compose Desktop/Skiko** JVM window instead of Android/LayoutLib
-
-> 🖼️ one annotation → a golden-file test + a live entry in an interactive component browser
-
-No emulator, no AVD, no LayoutLib — `@ViddikScreenshot`-annotated composables are collected by a KSP
-processor into a component registry, then either captured to PNG and diffed on a plain JVM
-(`ViddikEngine`, record/verify) or shown live in a portable browser (`ViddikShowroom`) — in a desktop
-window, and from 0.5.0 in an Android or iOS app reading the same registry.
-
-### ⚖️ How it compares
-
-Measured in [screenshot-bench](https://github.com/youndie/screenshot-bench): the same generated
-composables at 360×640, each tool set up as its own documentation says, one build machine
-(20 cores, Linux), medians. viddik 0.6.1.45 for the speed rows, which is the code of 0.7.0 there.
-
-| | viddik | Roborazzi, desktop | Roborazzi, Robolectric | Paparazzi |
-|---|---|---|---|---|
-| Renderer | Skiko | Skiko | Android framework | layoutlib |
-| Verify 1000 screenshots, one JVM | 25.1 s | 29.6 s | 41.5 s | 28.7 s |
-| Verify 2000 screenshots, four forks | 14.8 s | 17.9 s | 35.9 s | 22.7 s |
-| Edit a component, record one golden (N=1000) | 3.3 s | 2.8 s | 7.4 s | 5.5 s |
-| Linux goldens verified on macOS (N=50) | 50/50 pass, 38 byte-identical | 0/50 pass | 50/50, byte-identical | 50/50, byte-identical |
-| A full stop added to a heading, default settings | 2/10 caught | 10/10 | 10/10 | 2/10 |
-
-What the rows say: on large suites the two Skiko tools and Paparazzi are within a few seconds of
-each other, and Robolectric is the slowest; the edit-and-record cycle is where they differ most.
-viddik's goldens travel between operating systems on Skiko, where Roborazzi's differ everywhere —
-the Android renderers get that for free. The price is a tolerance: at the default 0.05% share a
-12-pixel change on a full screen passes; with `tolerancePercent = 0.0` it is caught 10/10 and the
-cross-OS goldens still pass, because the pixel floor only absorbs faint pixels (see
-[Cross-platform goldens](#%EF%B8%8F-cross-platform-goldens-fonts-ci-tolerance)).
-
-### 📦 Installation
-
-From 0.4.0 viddik is on Maven Central as `io.github.youndie.viddik`. Up to 0.3.3 it was
-`ru.workinprogress` on `https://reposilite.kotlin.website/snapshots`; that group is not on Central
-and nothing new is published under it, so moving to 0.4.0 means changing the coordinates and the
-plugin id, and nothing else.
-
-`mavenCentral()` belongs in **both** blocks, and `google()` beside the second one:
+**Screenshot tests for Compose Multiplatform on a plain JVM.** One annotation on a composable gives a
+golden-file test and an entry in a component browser — rendered through Compose Desktop/Skiko, with
+no emulator, no AVD and no layoutlib.
 
 ```kotlin
-// settings.gradle.kts
+@ViddikScreenshot(name = "Primary", group = "Buttons")
+@Composable
+fun PrimaryButton() {
+    MaterialTheme(typography = viddikTypography()) {
+        Button(onClick = {}) { Text("Continue") }
+    }
+}
+```
+
+```bash
+./gradlew :yourModule:viddikRecord     # write the goldens
+./gradlew :yourModule:viddikVerify     # compare against them
+./gradlew :yourModule:viddikShowroom   # browse the components in a window
+```
+
+## Installation
+
+```kotlin
+// settings.gradle.kts — mavenCentral() in both blocks, google() beside the second
 pluginManagement {
     repositories {
         gradlePluginPortal()
@@ -64,696 +44,57 @@ dependencyResolutionManagement {
 }
 ```
 
-Both halves of that were found by resolving from an empty project rather than by reading a POM.
-A plugin is resolved by its **marker**, out of `pluginManagement` — a block that does not look at
-Maven Central unless it is told to. And Compose Multiplatform's desktop artifacts, which viddik
-brings with it, depend on `androidx.compose.runtime:runtime` and `androidx.lifecycle:*`, which are
-published to Google's Maven repository and not to Central: without `google()` the build fails with
-`Could not find androidx.compose.runtime:runtime`, naming an artifact rather than the missing
-repository. Most Compose projects already carry `google()`; an empty one does not.
-
 ```kotlin
 // build.gradle.kts of the module that holds the fixtures
 plugins {
     id("com.google.devtools.ksp") version "<KSP_VERSION>" // must match your Kotlin compiler version
-    id("io.github.youndie.viddik") version "<VERSION>"
+    id("io.github.youndie.viddik") version "0.7.0"
 }
 ```
 
-That's the whole setup. The plugin adds the dependencies, puts the processor on the right KSP
-configuration, registers the generated-source directory, and gives you the tasks:
-
-```bash
-./gradlew :yourModule:viddikRecord       # write the goldens a verification would reject
-./gradlew :yourModule:viddikVerify       # compare against them
-./gradlew :yourModule:viddikDesignParity # measure every fixture against its design PNG
-./gradlew :yourModule:viddikShowroom     # open the component browser in a window
-```
-
-Which names those are is the part the plugin exists for: a `jvm("desktop")` target needs
-`kspDesktopTest` / `src/desktopTest/snapshots`, an unnamed `jvm()` needs `kspJvmTest` /
-`src/jvmTest/snapshots`, and a plain `kotlin("jvm")` module needs `kspTest` plus the
-platform-suffixed artifacts (`viddik-annotations-desktop`, `viddik-testing-core-jvm`) because it
-can't resolve a multiplatform variant. Get one of those wrong by hand and nothing errors — KSP just
-reports `SKIPPED` and the screenshot task passes with no tests in it.
-
-Everything is configurable, and every default is derived from the module:
-
-```kotlin
-viddik {
-    snapshotsDir = "src/desktopTest/snapshots" // default: src/<test source set>/snapshots
-    tolerancePercent = 0.5                     // default: viddik's own 0.05%
-    channelTolerance = 0                       // default: viddik's own ±2
-    minMismatchedPixels = 0                    // default: viddik's own 16 — the pixel floor; 0 turns it off
-    floorChannelDelta = 255                    // default: viddik's own 96 — 255 makes the floor count pixels only
-    reportsDir = "build/reports/screenshots"   // where a failed comparison writes its _DIFF.png
-    designDir = "src/desktopTest/snapshots/design" // default: <snapshotsDir>/design — the design PNGs
-    designTolerancePercent = 3.0               // default: viddik's own 5% — see "Design parity"
-    designChannelTolerance = 8                 // default: viddik's own ±16
-    designStrict = true                        // default: false; -Pviddik.designStrict turns it on per-run
-    verifyOnCheck = true                       // default: false; -Pviddik.verify turns it on per-run
-    generateTests = false                      // registry only, no JUnit5 tests (Android app modules)
-    excludeFromTestTask = false                // default: true — see below
-    showroomTargets = true                     // default: false — the registry for Android and iOS too
-    kspDeclarationSnapshot = false             // default: true — see "Editing a component" below
-    addDependencies = false                    // declare the viddik artifacts yourself instead
-    viddikVersion = "<VERSION>"                // default: the plugin's own version
-}
-```
-
-By default the goldens are **not** wired into `check`, and the generated tests are excluded from the
-module's ordinary test task. Goldens are portable once your fixtures bundle a font (see
-"Cross-platform goldens" below), but a project that hasn't done that yet has host-specific goldens,
-and those would redden `./gradlew build` on every machine that didn't record them. Turn the check on
-for good with `verifyOnCheck = true`, or per run with `./gradlew check -Pviddik.verify`.
-
-#### Compatibility
-
-`viddik-testing-core` renders through `ComposeScene` and `skiko` directly, so it is bound to one
-Compose Multiplatform line rather than to a range of them — a mismatch shows up at runtime
-(`NoSuchMethodError` / `IllegalAccessError` on the first frame), not at compile time.
-
-| viddik | Compose Multiplatform | Kotlin |
-|---|---|---|
-| 0.5.x | 1.12.x | 2.4.x |
-| 0.4.x | 1.12.x | 2.4.x |
-| 0.3.x | 1.12.x | 2.4.x |
-| 0.2.x | 1.12.x | 2.4.x |
-| 0.1.x | 1.11.x | 2.4.x |
-
-Reading metadata off `@Preview` needs 0.3.0 or newer, and the `@Preview` it reads is the one Compose
-Multiplatform 1.12 ships in `commonMain`. A per-fixture `tolerancePercent` needs 0.3.1 — processor and
-engine both, which the plugin keeps in step by default.
-
-An Android consumer of `viddik-annotations` needs `compileSdk = 37` from 0.2.0 on — that is what
-Compose Multiplatform 1.12 requires of everything that depends on it.
-
-0.5.0 is where the browser leaves the desktop window. `viddik-showroom` and its two hosts, the
-`showroomTargets` registry, the search field over the component list, and the iOS targets on
-`viddik-annotations` (`iosArm64` and `iosSimulatorArm64`; Compose Multiplatform no longer publishes
-`iosX64`) all arrive there — 0.4.0 published `viddik-annotations` for Android and desktop only, so an
-iOS consumer needs 0.5.0 rather than a flag. `viddikDesignParity` and the `design*` options beside it
-are 0.5.0 as well.
-
-#### Declaring the dependencies by hand
-
-With `addDependencies = false` — or without the plugin at all:
-
-```kotlin
-dependencies {
-    // KMP consumer (e.g. your own jvm("desktop") target) — base coordinates, no target suffix:
-    testImplementation("io.github.youndie.viddik:viddik-annotations:<VERSION>")
-    testImplementation("io.github.youndie.viddik:viddik-testing-core:<VERSION>")
-    add("kspDesktopTest", "io.github.youndie.viddik:viddik-processor:<VERSION>")
-
-    // Plain kotlin("jvm") consumer, NOT KMP-aware — needs the explicit per-target artifacts instead:
-    // testImplementation("io.github.youndie.viddik:viddik-annotations-desktop:<VERSION>")
-    // testImplementation("io.github.youndie.viddik:viddik-testing-core-jvm:<VERSION>")
-    // kspTest("io.github.youndie.viddik:viddik-processor:<VERSION>")
-}
-```
-
-`viddik-annotations` is the lightweight API surface (the `@ViddikScreenshot` marker, `ViddikComponent`,
-`ViddikShowroom`) — safe to depend on from any Compose Multiplatform target: `android()`, `jvm()` and
-iOS. `viddik-processor` is the KSP codegen (registry + JUnit5 tests). `viddik-testing-core` is the
-JVM-only capture/diff/record engine (JUnit5 + Compose Desktop) — only ever needed on a
-`test`/`jvmTest`/`desktopTest` classpath, never `main`. `viddik-showroom` is the optional host layer:
-an Android activity and an iOS view controller over the same browser, and the only artifact you would
-ever put on `main`. Compose itself stays yours: the plugin adds no `material3` or `compose.desktop`
-dependency, since it can't know which of them your fixtures use.
-
-### ✍️ Writing a fixture
-
-A `@ViddikScreenshot` function is just a `@Composable` with only default-valued parameters:
-
-```kotlin
-@ViddikScreenshot(name = "AppButton - Primary", group = "Buttons", darkVariant = true)
-@Composable
-fun AppButtonPrimaryPreview() {
-    MaterialTheme {
-        Button(onClick = {}) { Text("Continue") }
-    }
-}
-```
-
-#### Or let `@Preview` carry the metadata
-
-`@ViddikScreenshot` also works as a bare marker, with the details read off an
-`androidx.compose.ui.tooling.preview.Preview` on the same function:
-
-```kotlin
-@ViddikScreenshot
-@Preview(name = "AppButton - Primary", group = "Buttons", widthDp = 320)
-@Composable
-fun AppButtonPrimaryPreview() {
-    MaterialTheme {
-        Button(onClick = {}) { Text("Continue") }
-    }
-}
-```
-
-Worth doing because that one annotation is read by three different things: the IDE preview pane,
-Android's own screenshot tooling, and viddik. In Compose Multiplatform 1.12 it is literally the same
-`androidx.compose.ui.tooling.preview.Preview` on Android and in `commonMain`, so a fixture declares
-its name and size once and every tool agrees on them.
-
-`@ViddikScreenshot` stays the opt-in and isn't going away: scanning every `@Preview` in a codebase
-would silently turn previews written purely for the IDE into goldens, including the many that can't
-render headless at all.
-
-| `@Preview` field | becomes |
-|---|---|
-| `name`, `group` | the golden name and showroom group |
-| `widthDp`, `heightDp` | the capture size in pixels — viddik renders at density 1 |
-| `uiMode = UI_MODE_NIGHT_YES` | this fixture renders dark |
-
-Precedence per field is: an argument on `@ViddikScreenshot`, then the `@Preview` field, then viddik's
-default — so existing fixtures that spell everything on `@ViddikScreenshot` keep behaving exactly as
-they did.
-
-`darkVariant` and `tolerancePercent` are viddik's own — `@Preview` has no counterpart for either, so
-those two are only ever read off `@ViddikScreenshot`.
-
-Note that `uiMode` and `darkVariant` mean different things: `uiMode` says *this* fixture is dark,
-`darkVariant = true` asks for a **second**, dark copy beside the light one. Setting both is an error
-rather than a silently duplicated dark golden.
-
-#### Multipreview
-
-`@Preview` is repeatable, and a multipreview annotation is just an annotation class carrying several
-of them — so one marker gives one fixture per preview, `@PreviewLightDark` and hand-rolled ones alike:
-
-```kotlin
-@Preview(name = "Small", fontScale = 0.85f, widthDp = 320)
-@Preview(name = "Large", fontScale = 1.5f, widthDp = 320)
-annotation class AppTypeScale
-
-@ViddikScreenshot(name = "Body text", group = "Type")
-@AppTypeScale
-@Composable
-fun BodyText() { ... }
-```
-
-That records `Type - Body text - Small` and `Type - Body text - Large`. With several previews the name
-on `@ViddikScreenshot` becomes the stem and each `@Preview` says which one it is; a preview with no
-name of its own falls back to its index, so names can't collapse into each other. Multipreviews built
-out of multipreviews resolve too.
-
-`darkVariant` is refused alongside several previews — it would silently double all of them. Say which
-ones are dark with `@PreviewLightDark` or a night `uiMode` instead.
-
-#### What else `@Preview` carries
-
-`fontScale` is honoured: it scales text inside the capture without resizing the canvas, so
-`@PreviewFontScale` produces genuinely different goldens rather than seven identical ones.
-
-`device` is read only for its size, and only in the `spec:` form — `spec:width=411dp,height=891dp`
-sets the capture size. Everything else a spec can say (`dpi`, `orientation`, `isRound`) is a density or
-a device shape a plain canvas has no equivalent for; those are **warned about and dropped**, not
-errors, because a fixture carrying `device` for the IDE's sake is still a perfectly good fixture. Named
-devices (`id:pixel_5`) are warned about and ignored.
-
-#### `@PreviewWrapper` — the theme, declared once
-
-```kotlin
-class AppPreviewTheme : PreviewWrapperProvider {
-    @Composable
-    override fun Wrap(content: @Composable () -> Unit) {
-        MaterialTheme(typography = viddikTypography(), content = content)
-    }
-}
-
-@ViddikScreenshot
-@PreviewWrapper(AppPreviewTheme::class)
-@Preview(name = "Primary", group = "Buttons")
-@Composable
-fun PrimaryButton() { ... }   // no theme call of its own
-```
-
-This is worth more than it looks. A theme can't be forced onto a composable from outside the
-composition, so until now every fixture had to remember to call the harness that gives it the bundled
-font — and a fixture that forgot produced a golden drawn in the host's system font, which is exactly
-the thing that isn't portable. `@PreviewWrapper` moves that harness into one place, and because the
-annotation can sit on an annotation class, a project's own `@AppPreviews` can carry the theme and the
-light/dark pair together.
-
-This shows up two ways, from the exact same fixture — no duplication between "the test" and "the
-thing a developer clicks through":
-
-```bash
-# Record (writes src/<test source set>/snapshots/*.png for the fixtures whose render the
-# verification would reject — verify those visually, recording doesn't validate anything)
-./gradlew :yourModule:viddikRecord
-
-# Verify (compares against the recorded goldens, fails with a saved _DIFF.png on mismatch)
-./gradlew :yourModule:viddikVerify
-
-# Live in a window — same registry, no capture, just an interactive browser
-./gradlew :yourModule:viddikShowroom
-```
-
-**Recording leaves alone what the verification accepts.** It renders every selected fixture, compares
-the render with the golden through the same differ and the same thresholds `viddikVerify` uses, and
-writes only where that comparison fails. So a record on an unchanged tree writes nothing, and what it
-leaves in `git status` is what actually moved — which matters most where the goldens are in Git LFS
-and every rewritten file is another blob in the history. The run says which of the two happened:
-
-```
-viddik record: wrote 2 golden(s), kept 746 the verification already accepts. Written: Buttons - Primary, Buttons - Primary Dark
-```
-
-`--force` writes every selected golden regardless, which is what a re-record after a Compose, font or
-renderer bump wants — there "would the old comparison accept this" is not the question:
-
-```bash
-./gradlew :yourModule:viddikRecord --force
-```
-
-**A faster run, for a suite of same-sized fixtures.** Standing a Compose scene up is most of what a
-capture costs — an *empty* capture measures 11.7 ms against a median fixture's 12.1 ms — so one
-scene can serve the whole run:
-
-```kotlin
-viddik { sceneReuse = false }   // on by default; turn it off if the task runs other Compose tests
-```
-
-Measured on 403 fixtures of one size: **13.3 ms per capture becomes 5.7 ms**. On viddik's own suite,
-whose fixtures deliberately differ in size, 22.4 ms becomes 13.4 ms — the scene is reopened whenever
-the next fixture has a different canvas, because a `Dialog` centres itself in the window and a window
-of the wrong size draws it somewhere else. Fixtures are therefore visited in size order rather than
-registry order, and a suite that alternates sizes every fixture gains nothing.
-
-**Several forks.** All the fixtures live under one generated class and Gradle divides test work by
-class, so `maxParallelForks` alone does nothing. `shards` emits that many test classes, each taking
-every Nth fixture at runtime, and sets a matching `maxParallelForks` on `viddikVerify` and
-`viddikRecord`:
-
-```kotlin
-viddik { shards = 1 }   // two by default; one is right for a small suite
-```
-
-**Editing a component does not re-run KSP.** The registry depends on the fixtures and on the
-declarations they see, never on a function body — but KSP re-runs whenever a class on its classpath
-changes, and with Compose that is almost every edit: the compiler records each composable's source
-offsets in `@FunctionKeyMeta`, so retyping one string moves every composable after it. The plugin
-therefore hands the test source set's KSP run a snapshot of the main classes with the bodies, debug
-information and those offsets taken out, rewritten only when a declaration changes — and does the
-same, through an artifact transform, for the other modules of the build on the test classpath, so a
-module of fixtures that draws its components from sibling modules gains as much. Measured on a
-module of 1000 fixtures: editing a component and recording one golden takes ~3.0 s instead of
-~4.1 s, and a new or changed declaration still re-runs KSP as before. Set
-`kspDeclarationSnapshot = false` if another processor in the same KSP run needs the real classes.
-
-**Measure before changing it, in either direction.** A fork costs its own JVM start plus Compose and
-skiko class loading — about 1.9 s, against roughly 7 ms per capture once the scene is shared — so a
-few dozen fixtures are cheaper in one fork, and the gain on a big suite depends on the machine:
-measured on a 748-fixture suite on an 8-core laptop, two forks took a verification from ~52 s to
-~25 s and four to ~18 s, while four forks on a 20-core Linux box were *slower* than one on a
-synthetic suite of 400. `viddikDesignParity` ignores this setting, and each fork prints its own
-record summary.
-
-Off by default, and it has one hard constraint: the run must contain no other Compose test that
-stands up a harness of its own, because two harnesses in one JVM wedge each other. `viddikVerify` and
-`viddikRecord` run only the generated screenshot tests, so that holds there by construction. The
-goldens are identical either way — this repository's CI records its own suite through both paths on
-all three OSes and compares.
-
-To work on one component, use `--component` — Gradle's own `--tests` can't help here, since every
-fixture is a JUnit5 **dynamic** test under a single `GeneratedViddikTests` class and `--tests` only
-matches classes and methods:
-
-```bash
-./gradlew :yourModule:viddikRecord --component "Buttons - Primary"  # records one fixture
-./gradlew :yourModule:viddikVerify --component Primary              # bare substring
-./gradlew :yourModule:viddikVerify --component "Buttons*Dark"       # * and ? are wildcards
-```
-
-The pattern is a **case-insensitive substring** of `"$group - $name"`, with `*` and `?` as wildcards.
-A pattern that matches nothing fails the task and lists what the module does have, rather than
-reporting a green run of zero screenshots.
-
-Without the plugin, recording is the `VIDDIK_RECORD_MODE` environment variable on whatever test task
-runs the generated class (`VIDDIK_RECORD_MODE=true ./gradlew :yourModule:test --rerun`), with
-`-Dviddik.forceRecord=true` for what `--force` does, and the browser is a `fun main()` you write
-yourself:
-
-```kotlin
-fun main() = application {
-    Window(onCloseRequest = ::exitApplication, title = "Component Browser") {
-        MaterialTheme {
-            ViddikShowroom(GeneratedViddikRegistry.components)
-        }
-    }
-}
-```
-
-`darkVariant = true` generates a *second* registry entry automatically (`"... Dark"`), wrapped in
-`CompositionLocalProvider(LocalViddikDarkTheme provides true)` — your fixture reads
-`LocalViddikDarkTheme.current` itself to pick a color scheme, since there's no real "system dark mode"
-on a JVM test harness:
-
-```kotlin
-@ViddikScreenshot(name = "Card", group = "Widgets", darkVariant = true)
-@Composable
-fun CardPreview() {
-    val dark = LocalViddikDarkTheme.current
-    MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-        Card { Text("Hello") }
-    }
-}
-```
-
-#### 🔎 Searching the showroom
-
-The list has a search field over it. The query is split on whitespace and every token has to appear
-somewhere in `"$group $name"`, case-insensitively — so `wid but` finds `Widgets / Button`, and the
-order of the words does not matter. The field shows how many of the module's components survived the
-query, and clears with the `×` beside it.
-
-### 📱 The showroom on Android and iOS
-
-The desktop window is one host for the browser and not the only useful one: a component library is
-judged on a phone. The obstacle is where the registry lives — KSP generates it into the module's
-**test** source set, and a test source set is never compiled into an app, so that registry can reach
-the machine that ran the build and nowhere else.
-
-`viddik { showroomTargets = true }` changes where it comes from:
-
-```kotlin
-plugins {
-    kotlin("multiplatform")
-    id("com.google.devtools.ksp")
-    id("io.github.youndie.viddik")
-}
-
-viddik {
-    showroomTargets = true
-}
-```
-
-**Move the fixtures to `commonMain`.** That is the actual migration; everything else is wiring the
-plugin does — the processor goes on `kspCommonMainMetadata`, the generated directory goes on
-`commonMain`, and every compilation is ordered after the task that fills it. The registry is then
-compiled for every target the module has.
-
-Goldens keep working exactly as before. The JUnit 5 class that drives them is JVM-only and cannot be
-common, so the plugin writes it into the test source set itself, over the registry `commonMain`
-produced — `viddikVerify` and `viddikRecord` are unchanged, and so is `--component`.
-
-Then add `viddik-showroom` and write the host. On Android that is a subclass and a manifest entry:
-
-```kotlin
-// build.gradle.kts of the app module
-implementation("io.github.youndie.viddik:viddik-showroom:<VERSION>")
-```
-
-```kotlin
-class ShowroomActivity : ViddikShowroomActivity() {
-    override val components = GeneratedViddikRegistry.components
-}
-```
-
-On iOS it is a view controller:
-
-```kotlin
-// iosMain
-fun ShowroomViewController(): UIViewController =
-    ViddikShowroomUIViewController(GeneratedViddikRegistry.components)
-```
-
-```swift
-struct ContentView: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> UIViewController {
-        ShowroomViewControllerKt.ShowroomViewController()
-    }
-    func updateUIViewController(_ controller: UIViewController, context: Context) {}
-}
-```
-
-Both are `ViddikShowroomApp` underneath: the browser inside a default `MaterialTheme`, with Android's
-back gesture wired to close a component's detail view rather than the activity. Host
-`ViddikShowroomApp` — or `ViddikShowroom` itself, which imposes no theme — if you would rather put it
-inside your own navigation.
-
-The registry is **passed in**, not looked up. The desktop launcher can afford to load it reflectively,
-since it runs against a classpath a Gradle task assembled; here it is an ordinary reference in your
-own module, so a fixture that stopped compiling is a build error rather than an empty list at launch —
-and Kotlin/Native has no reflective lookup to offer in the first place.
-
-`samples/` in this repository is all of the above, running: a `fixtures` module with the fixtures in
-`commonMain`, an Android app, and an iOS app that needs no Xcode project
-(`samples/scripts/ios-showroom.sh` links the executable, wraps it in a bundle and launches the
-simulator). It is a separate Gradle build that consumes viddik through `includeBuild("..")` — the
-plugin id and the published coordinates, the way any other project would.
-
-### 📐 Sizing
-
-Width defaults to 400px; height defaults to **auto** — the engine renders into a tall canvas, measures
-the actual composed content height, and crops to it. No more hand-picking `height = 680` per fixture:
-
-```kotlin
-@ViddikScreenshot(name = "Chip", group = "Widgets") // height auto-fits (width 400px by default)
-```
-
-Pass `height` explicitly only for content that has no natural height of its own — `fillMaxSize()`/
-`weight()` layouts, or anything that opens a `Dialog`/`Popup` (auto-height isn't reliable for dialog
-content):
-
-```kotlin
-@ViddikScreenshot(name = "FullScreenBanner", group = "Screens", height = 800)
-```
-
-### 🎛️ Parameterized fixtures (`@PreviewParameter`)
-
-Exactly one parameter annotated `@PreviewParameter` is allowed as the sole exception to "only default
-parameters" — the same convention as Compose tooling's own `@Preview`:
-
-```kotlin
-@ViddikScreenshot(name = "Checkbox", group = "Widgets", darkVariant = true)
-@Composable
-fun CheckboxPreview(
-    @PreviewParameter(CheckboxStateProvider::class) state: CheckboxPreviewState,
-) {
-    MaterialTheme {
-        Checkbox(checked = state.checked, onCheckedChange = {}, enabled = state.enabled)
-    }
-}
-```
-
-One annotation → N registry entries, one per provider value, each with its own golden file. For a
-**descriptive** golden filename instead of a bare index (`... #0`, `... #1`), have the parameter type
-implement `ViddikPreviewLabel`:
-
-```kotlin
-data class CheckboxPreviewState(
-    val checked: Boolean,
-    val enabled: Boolean,
-) : ViddikPreviewLabel {
-    override val previewLabel get() = if (enabled) "Enabled" else "Disabled"
-}
-```
-
-### 🖥️ Cross-platform goldens (fonts, CI, tolerance)
-
-**Goldens are portable.** Record on macOS, verify on Linux CI, or the other way round. On this
-repo's own suite 8 of 10 goldens come out byte-identical across Windows and Linux (same md5) and the
-other two differ by 1–2 pixels within the channel tolerance; every PR re-checks the committed PNGs on
-`ubuntu-latest`, `macos-latest` (arm64) and `windows-latest` at once
-(`.github/workflows/verify-goldens.yaml`). No Docker, no "record only on the runner", no per-OS
-baselines.
-
-That isn't free by default though, because Skia's text rendering is platform-specific in two
-independent ways. viddik fixes one of them for you and hands you the tool for the other.
-
-**Fixed automatically — glyph rasterization.** Everything Skia draws except glyphs goes through its
-own scan converter, identical in every skiko build; glyphs instead go to the host font backend
-(CoreText / DirectWrite / FreeType), and no combination of `FontRasterizationSettings` makes those
-three agree. `CaptureEngine` sidesteps the backend entirely: it hands the canvas a matrix carrying a
-1e-9 perspective term, which is Skia's own documented condition for abandoning the glyph mask cache
-and filling glyph outlines with its regular path rasterizer. Geometry shifts by ~1e-6 px, text keeps
-full anti-aliasing, and rendering stops depending on the OS. Nothing to configure.
-
-**Your job — fonts.** Skia renders text through whatever fonts the host OS has installed, so a golden
-recorded against the macOS system UI font can't match a bare Linux runner. Bundle a font file:
-
-- **No font of your own?** Use the bundled Roboto (OFL, variable, single file for every weight):
-
-  ```kotlin
-  MaterialTheme(typography = viddikTypography()) { content() }
-  ```
-
-- **Already bundling your design system's font?** Keep it, and run the bytes through
-  `normalizeVerticalMetrics()` when loading:
-
-  ```kotlin
-  val fontBytes = normalizeVerticalMetrics(resource("fonts/YourFont.ttf").readBytes())
-  ```
-
-  This one matters more than it sounds. Font backends read vertical metrics from *different tables of
-  the same file* — FreeType and CoreText take `hhea`, DirectWrite takes `OS/2.usWin*`. In Roboto those
-  disagree (1900/−500 vs 1946/512, i.e. ascent −12.988 vs −13.303 at 14px), so line height and
-  baseline differ per OS and every line after the first in a paragraph drifts by a pixel — the single
-  largest source of cross-platform diff we measured. `normalizeVerticalMetrics()` forces `hhea`,
-  `OS/2.sTypo*` and `OS/2.usWin*` to agree and sets `USE_TYPO_METRICS`, so which table a backend
-  prefers stops mattering. `ViddikFontFamily` already goes through it.
-
-**What still isn't portable:** glyphs your bundled font doesn't have. A `世界`, an emoji, or a `✕`
-used as a close button falls back to a *host* font — real CJK on a Mac, tofu boxes in a bare
-container, Segoe UI Symbol on Windows. This one can't be fixed from outside Compose (a fallback font
-registered with Skia is only consulted after the host's, and ParagraphBuilder pins one typeface per
-style, so per-character family fallback never runs — both measured, see CLAUDE.md), so viddik reports
-it instead:
-
-```kotlin
-check(ViddikGlyphCoverage.missingGlyphs(label).isEmpty()) { "host fonts would draw these: $label" }
-```
-
-`missingGlyphs(text, fontBytes = bundled Roboto)` reads the font's own `cmap`. Non-empty means that
-text renders differently per machine — draw the icon as an icon, or bundle a font that covers it.
-
-A capture can refuse such text instead of photographing it:
-
-```kotlin
-viddik {
-    glyphCheck = true                       // fail when the font cannot draw what the fixture says
-    glyphCheckFont = "src/main/res/font/plex.ttf"   // ...against your own font, if you bundle one
-}
-```
-
-Off by default, because the check reads one font and your fixtures may legitimately draw with
-another. With it on, a fixture drawing `←` fails with `Nothing in the font draws U+2190 (←), so the
-host would` — instead of a golden that is stable on the machine that recorded it and 0.06% different
-on the next one, with the moved pixels sitting *after* the character rather than on it. The bundled
-Roboto covers `‹ « < × … •` and none of `← → ↑ ↓ ✕ ▸`.
-
-`ViddikEngine.verify(...)` treats a match as "≤ 0.05% of pixels differ"
-(`ImageDiffer.DEFAULT_TOLERANCE_PERCENT`) with a ±2 per-channel allowance. For scale: adding one
-character to a button label moves 1.32% of the pixels, so this is a strict check, not a loose one.
-Override per call via `tolerancePercent`, or globally via the `viddik.tolerancePercent` system
-property.
-
-Beside the share there is a floor, so a small fixture is not failed by the same handful of stray
-pixels a large one absorbs: up to 16 mismatched pixels pass whatever the size
-(`DEFAULT_MIN_MISMATCHED_PIXELS`, `viddik.minMismatchedPixels`) — **as long as every one of them is
-within a channel delta of 96** (`DEFAULT_FLOOR_CHANNEL_DELTA`, `viddik.floorChannelDelta`). The floor
-is for cross-OS residue, which is faint: Linux-recorded goldens verified on macOS differ by at most
-13 px at a delta of 47. An edit of the same size is not — a full stop appended to a heading is 12 px
-at a delta of 223 — and a floor that only counted pixels let it through even at zero tolerance. A
-pixel past the delta now fails the comparison however few there are, unless the share covers it.
-
-The same numbers decide what recording writes — a golden this comparison accepts is one
-`viddikRecord` leaves on disk, unless `--force` says otherwise.
-
-#### One fixture that can't hold the strict number
-
-Three rendering paths are not portable, and they have one thing in common: the layer's content is
-rasterized in a space the capture root never reaches. **`Modifier.blur`**, **a runtime-shader
-`RenderEffect`** (which is what glass libraries are built on), and **a layer read back with
-`toImageBitmap()`**. Everything else that re-roots a subtree is fine and checked as such — `Dialog`,
-`Popup`, `CompositingStrategy.Offscreen`, a shadow with a non-rectangular clip, a plainly recorded
-layer: the `Canary/*` fixtures verify all of them on ubuntu, macos and windows per pull request.
-Skia factors the perspective out of the canvas matrix before rasterizing such a layer's content
-(image filters cannot work in a perspective space), which switches off exactly the mechanism that
-makes glyphs platform-independent, so they go back to the host font backend. Measured macOS to Linux,
-at viddik's own defaults: text under `blur(2.dp)` mismatches 1.40% of pixels, the same text with no
-effect 0.00%, geometry under the same blur 0.00%.
-
-**The fix is `Modifier.viddikStableGlyphs()`**, which puts the term back inside the layer. Same
-measurement with it applied: 0.00%.
-
-```kotlin
-Box(Modifier.blur(8.dp).viddikStableGlyphs()) { Text("under glass") }
-Box(Modifier.layerBackdrop(backdrop).viddikStableGlyphs()) { Text("under glass") }
-```
-
-It goes on the content being blurred, *inside* the effect rather than around it — around it is where
-the capture root's own term already is, and where Skia already discards it. That means it lives in
-whatever composable draws the glass, production code included, which is why it ships in
-`viddik-annotations` (safe to depend on from `main`) and does nothing at all unless a viddik capture
-is what is drawing: outside one it is a single composition-local read and returns the receiver
-untouched. `CaptureEngine` can't apply it for you — Compose exposes no hook into how a layer draws
-(`GraphicsLayer` is final, `SkiaBackedCanvas` internal), see CLAUDE.md for that measurement too.
-
-Where that placement isn't possible — a third-party glass component you don't control — raising the
-global threshold to cover one such fixture would un-check every other one, so a fixture can carry its
-own budget instead:
-
-```kotlin
-@ViddikScreenshot(name = "Segmented - three ways", group = "Glass", tolerancePercent = 6.0)
-```
-
-It overrides both the default and `viddik.tolerancePercent` for that fixture alone, and applies to
-every entry the fixture expands to (`darkVariant`, `@PreviewParameter` values, a multipreview). The
-failure message says when the threshold that let something through was the fixture's own.
-
-Two things it is not for. It isn't a way to quiet a fixture that has started failing — that is a
-regression until measured otherwise, and the number written here should be one you measured on the
-platforms you actually verify on. And it isn't a per-fixture off switch: anything outside 0–100 is a
-build error, and 100 itself compiles with a warning, because a fixture that cannot fail is a green
-check that checks nothing.
-
-### 🎨 Design parity (`viddikDesignParity`)
-
-Goldens answer "did the rendering change". A different question comes first, while a screen is being
-built: **how far is it from the design it was built to**. `viddikDesignParity` answers that one, and it
-is deliberately a separate task with separate numbers, because the two comparisons have nothing in
-common except the pixels: a golden is Compose against Compose, a design is Compose against whatever
-drew the artboard.
-
-Put a PNG of each design state next to the goldens, under `design/`, named exactly like the golden
-the fixture would record — `<group>_<name>.png`, spaces and everything else outside `[A-Za-z0-9_.-]`
-replaced by `_`. The fixture's `width`/`height` should be the artboard's size; a reference of another
-size is reported as such rather than scored, because the percentage then counts the area outside
-the overlap too.
-
-```
-src/desktopTest/snapshots/
-├── Checkout_Empty.png            # golden, recorded by viddikRecord
-└── design/
-    └── Checkout_Empty.png        # reference, exported from the design — never written by viddik
-```
-
-```bash
-./gradlew :yourModule:viddikDesignParity                              # every fixture
-./gradlew :yourModule:viddikDesignParity --component "Checkout*"      # same filter as verify
-./gradlew :yourModule:viddikDesignParity -Pviddik.designStrict        # fail on a mismatch
-```
-
-The task **reports rather than judges** by default: it passes, and prints one line per fixture:
-
-```
-Design parity: 1/3 within 5.0% (channel tolerance ±16), 6 without a reference
-  ok      Buttons - Filled 0.00%
-  no ref  Buttons - Filled Dark (expected src/desktopTest/snapshots/design/Buttons_Filled_Dark.png)
-  DIFF    Buttons - Outlined 16.40% -> build/reports/screenshots/design/Buttons_Outlined_DIFF.png
-```
-
-A fixture without a reference is information, not a failure — a module rarely has a design for every
-state of every component. The one thing that does fail the task in report mode is **no reference
-matching any fixture at all**, which is a wrong `designDir` or a naming slip, and a green run that
-measured nothing would hide it. `designStrict = true` (or `-Pviddik.designStrict`) turns each mismatch
-into a failing test as well, for the module where matching the design is the acceptance criterion.
-
-Everything it measured goes to `build/reports/screenshots/design/`, for a person or a tool to work
-from: the render of every fixture as `<name>_ACTUAL.png` (put it next to the reference), a red-mask
-`<name>_DIFF.png` wherever a pixel differed, `summary.txt` — the lines above — and `summary.json`
-with the same per-fixture status, pixel counts, percentage, both sizes and both paths. Files from the
-previous run are removed first, so a diff that no longer reproduces never sits next to a fresh
-summary.
-
-The defaults — 5% of pixels, ±16 per channel — are a starting point for "looks the same when drawn by
-two rasterizers", not a measurement; the golden numbers (0.05%, ±2) would fail on anti-aliasing alone.
-Calibrate them on a screen you consider done, then tighten. A fixture's own
-`@ViddikScreenshot(tolerancePercent)` is not consulted here: it budgets rendering noise between two
-runs of the same code, which is a different question.
-
-`viddikRecord` never touches `design/`, and neither does this task. The reference is the design's, and
-a run that could overwrite it with the render would turn "does the code match the design" into "does
-the code match itself".
-
-### 🗂️ Groups & registry
-
-Every fixture belongs to a `group` (shown as a section in `ViddikShowroom`, and as a filename prefix
-for its golden PNG). `GeneratedViddikRegistry.components: List<ViddikComponent>` is the single source
-of truth both the tests and the browser read from — generated once per module by `viddik-processor`,
-nothing to wire by hand.
+That is the whole setup: the plugin adds the dependencies, the KSP processor and the tasks, with the
+names your module's shape needs. viddik 0.7 works with Compose Multiplatform 1.12, Kotlin 2.4 and
+JDK 21. Options, compatibility and the setup without the plugin: [docs/configuration.md](docs/configuration.md).
+
+## How it compares
+
+Measured in [screenshot-bench](https://github.com/youndie/screenshot-bench): the same generated
+composables at 360×640, each tool set up as its own documentation says, one build machine
+(20 cores, Linux), medians. viddik 0.6.1.45 for the speed rows, which is the code of 0.7.0 there.
+
+| | viddik | Roborazzi, desktop | Roborazzi, Robolectric | Paparazzi |
+|---|---|---|---|---|
+| Renderer | Skiko | Skiko | Android framework | layoutlib |
+| Verify 1000 screenshots, one JVM | 25.1 s | 29.6 s | 41.5 s | 28.7 s |
+| Verify 2000 screenshots, four forks | 14.8 s | 17.9 s | 35.9 s | 22.7 s |
+| Edit a component, record one golden (N=1000) | 3.3 s | 2.8 s | 7.4 s | 5.5 s |
+| Linux goldens verified on macOS (N=50) | 50/50 pass, 38 byte-identical | 0/50 pass | 50/50, byte-identical | 50/50, byte-identical |
+| A full stop added to a heading, default settings | 2/10 caught | 10/10 | 10/10 | 2/10 |
+
+On large suites the two Skiko tools and Paparazzi are within a few seconds of each other; the
+edit-and-record cycle is where they differ most. viddik's goldens travel between operating systems on
+Skiko, where Roborazzi's do not — the Android renderers get that for free. The price is a tolerance:
+at the default 0.05% a 12-pixel change on a full screen passes; with `tolerancePercent = 0.0` it is
+caught and the cross-OS goldens still pass ([how a comparison decides](docs/portability.md#how-a-comparison-decides)).
+
+## What it does
+
+- **Fixtures** — `@ViddikScreenshot`, or `@Preview` metadata read off the same function, multipreviews,
+  `@PreviewParameter`, dark variants, one theme for all of them through `@PreviewWrapper`.
+  [docs/fixtures.md](docs/fixtures.md)
+- **Recording and verifying** — a record writes only the goldens a verification would reject;
+  `--component` selects one fixture; one scene, two forks and a KSP that ignores body edits by
+  default. [docs/running.md](docs/running.md)
+- **Goldens across operating systems** — record on macOS, verify on Linux: viddik rasterizes glyphs
+  itself, and a bundled font (`viddikTypography()`) does the rest. [docs/portability.md](docs/portability.md)
+- **The showroom** — a component browser over the same registry, in a desktop window or in an
+  Android or iOS app. [docs/showroom.md](docs/showroom.md)
+- **Design parity** — how far each fixture is from the PNG exported from its design.
+  [docs/design-parity.md](docs/design-parity.md)
+
+API reference: [youndie.github.io/viddik](https://youndie.github.io/viddik/). Release notes:
+[GitHub releases](https://github.com/youndie/viddik/releases).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
