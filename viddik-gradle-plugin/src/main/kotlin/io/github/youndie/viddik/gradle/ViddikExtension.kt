@@ -56,6 +56,25 @@ public interface ViddikExtension {
     public val channelTolerance: Property<Int>
 
     /**
+     * How many mismatched pixels a comparison absorbs whatever the fixture's size — the floor beside
+     * [tolerancePercent], which on its own is unfair to small fixtures. Unset by default, leaving
+     * viddik's own 16. `0` turns the floor off. Becomes the `viddik.minMismatchedPixels` system
+     * property.
+     *
+     * Only faint pixels are spent from it, see [floorChannelDelta].
+     */
+    public val minMismatchedPixels: Property<Int>
+
+    /**
+     * The largest single-channel difference a pixel may have and still be absorbed by
+     * [minMismatchedPixels]; one past it fails the comparison however few there are. Unset by
+     * default, leaving viddik's own 96 — twice the measured cross-OS residue (delta 47), and well short
+     * of a changed glyph (a full stop: 12 px at delta 223). `255` restores a floor that counts pixels
+     * only. Becomes the `viddik.floorChannelDelta` system property.
+     */
+    public val floorChannelDelta: Property<Int>
+
+    /**
      * Where the design references live — PNGs exported from the design the fixtures were built to,
      * named exactly like the goldens (`<group>_<name>.png`), relative to the module directory.
      * Defaults to `design/` under [snapshotsDir]. Becomes the `viddik.designDir` system property.

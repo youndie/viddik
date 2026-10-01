@@ -67,12 +67,29 @@ class ViddikRecordTest {
         @TempDir dir: File,
     ) {
         record(dir)
-        // Far past the channel tolerance, but on too few pixels to fail `DEFAULT_MIN_MISMATCHED_PIXELS`.
-        val nudged = nudgeGolden(dir, byChannel = 100, pixels = DEFAULT_MIN_MISMATCHED_PIXELS)
+        // Far past the channel tolerance, but faint enough for the floor and on too few pixels to fail
+        // `DEFAULT_MIN_MISMATCHED_PIXELS`.
+        val nudged = nudgeGolden(dir, byChannel = DEFAULT_FLOOR_CHANNEL_DELTA, pixels = DEFAULT_MIN_MISMATCHED_PIXELS)
 
         record(dir)
 
         assertArrayEquals(nudged, File(dir, GOLDEN_NAME).readBytes(), "recording is judged by the same rule as verify")
+    }
+
+    @Test
+    fun `a few pixels changed outright are rewritten despite the pixel budget`(
+        @TempDir dir: File,
+    ) {
+        record(dir)
+        // A dozen pixels, as a full stop is, at a delta the floor does not spend itself on.
+        val nudged = nudgeGolden(dir, byChannel = 223, pixels = 12)
+
+        record(dir)
+
+        assertFalse(
+            nudged.contentEquals(File(dir, GOLDEN_NAME).readBytes()),
+            "the pixel floor is for faint residue, and recording is judged by the same rule as verify",
+        )
     }
 
     @Test

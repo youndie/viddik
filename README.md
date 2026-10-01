@@ -81,6 +81,8 @@ viddik {
     snapshotsDir = "src/desktopTest/snapshots" // default: src/<test source set>/snapshots
     tolerancePercent = 0.5                     // default: viddik's own 0.05%
     channelTolerance = 0                       // default: viddik's own ±2
+    minMismatchedPixels = 0                    // default: viddik's own 16 — the pixel floor; 0 turns it off
+    floorChannelDelta = 255                    // default: viddik's own 96 — 255 makes the floor count pixels only
     reportsDir = "build/reports/screenshots"   // where a failed comparison writes its _DIFF.png
     designDir = "src/desktopTest/snapshots/design" // default: <snapshotsDir>/design — the design PNGs
     designTolerancePercent = 3.0               // default: viddik's own 5% — see "Design parity"
@@ -592,8 +594,19 @@ Roboto covers `‹ « < × … •` and none of `← → ↑ ↓ ✕ ▸`.
 (`ImageDiffer.DEFAULT_TOLERANCE_PERCENT`) with a ±2 per-channel allowance. For scale: adding one
 character to a button label moves 1.32% of the pixels, so this is a strict check, not a loose one.
 Override per call via `tolerancePercent`, or globally via the `viddik.tolerancePercent` system
-property. The same three numbers decide what recording writes — a golden this comparison accepts is
-one `viddikRecord` leaves on disk, unless `--force` says otherwise.
+property.
+
+Beside the share there is a floor, so a small fixture is not failed by the same handful of stray
+pixels a large one absorbs: up to 16 mismatched pixels pass whatever the size
+(`DEFAULT_MIN_MISMATCHED_PIXELS`, `viddik.minMismatchedPixels`) — **as long as every one of them is
+within a channel delta of 96** (`DEFAULT_FLOOR_CHANNEL_DELTA`, `viddik.floorChannelDelta`). The floor
+is for cross-OS residue, which is faint: Linux-recorded goldens verified on macOS differ by at most
+13 px at a delta of 47. An edit of the same size is not — a full stop appended to a heading is 12 px
+at a delta of 223 — and a floor that only counted pixels let it through even at zero tolerance. A
+pixel past the delta now fails the comparison however few there are, unless the share covers it.
+
+The same numbers decide what recording writes — a golden this comparison accepts is one
+`viddikRecord` leaves on disk, unless `--force` says otherwise.
 
 #### One fixture that can't hold the strict number
 

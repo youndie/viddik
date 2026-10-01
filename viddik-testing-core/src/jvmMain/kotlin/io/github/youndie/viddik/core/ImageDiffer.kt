@@ -22,9 +22,25 @@ public const val DEFAULT_CHANNEL_TOLERANCE: Int = 2
 // the big one fails the small one for no reason. Whichever bound is more generous wins.
 public const val DEFAULT_MIN_MISMATCHED_PIXELS: Int = 16
 
+// The pixel floor exists for cross-OS residue, and that residue is faint: goldens recorded on Linux
+// amd64 and verified on macOS arm64 (N=50, 01.10.2026) differ by at most 13 px at a max channel delta
+// of 47. A real edit of the same size is not faint — a full stop appended to a heading is 12-13 px at a
+// delta of 223 — and a floor that only counted pixels let it through on 8 of 10 fixtures, at zero
+// tolerance too. So only a pixel within this delta is spent from the floor; one past it fails the
+// comparison whatever the count. Twice the measured residue, and still well short of a glyph edge.
+public const val DEFAULT_FLOOR_CHANNEL_DELTA: Int = 96
+
 public class DiffResult internal constructor(
     public val mismatchedPixels: Int,
     public val totalPixels: Int,
+    /**
+     * Mismatched pixels with a channel past the floor's delta ([DEFAULT_FLOOR_CHANNEL_DELTA] unless
+     * [ImageDiffer.diff] was told otherwise), out-of-bounds ones included. [matches] never lets the
+     * pixel floor absorb one of these.
+     */
+    public val pronouncedPixels: Int,
+    /** The largest single-channel difference among the mismatched pixels; 255 for a size change. */
+    public val maxChannelDelta: Int,
     private val lazyDiffImage: Lazy<BufferedImage>,
 ) {
     /**
@@ -39,19 +55,27 @@ public class DiffResult internal constructor(
 
     public val mismatchPercent: Double get() = if (totalPixels == 0) 0.0 else mismatchedPixels * 100.0 / totalPixels
 
+    /**
+     * True when the share of mismatched pixels is within [tolerancePercent], or when there are at most
+     * [minMismatchedPixels] of them and none is [pronounced][pronouncedPixels] — the floor is for
+     * faint residue, not for a few pixels that changed outright.
+     */
     public fun matches(
         tolerancePercent: Double = DEFAULT_TOLERANCE_PERCENT,
         minMismatchedPixels: Int = DEFAULT_MIN_MISMATCHED_PIXELS,
-    ): Boolean = mismatchedPixels <= minMismatchedPixels || mismatchPercent <= tolerancePercent
+    ): Boolean =
+        (mismatchedPixels <= minMismatchedPixels && pronouncedPixels == 0) || mismatchPercent <= tolerancePercent
 }
 
 private const val RED_MASK = 0xFFFF0000.toInt()
+private const val MAX_CHANNEL = 0xFF
 
 public object ImageDiffer {
     public fun diff(
         expected: BufferedImage,
         actual: BufferedImage,
         channelTolerance: Int = DEFAULT_CHANNEL_TOLERANCE,
+        floorChannelDelta: Int = DEFAULT_FLOOR_CHANNEL_DELTA,
     ): DiffResult {
         val width = maxOf(expected.width, actual.width)
         val height = maxOf(expected.height, actual.height)
@@ -65,20 +89,37 @@ public object ImageDiffer {
             return DiffResult(
                 mismatchedPixels = 0,
                 totalPixels = width * height,
+                pronouncedPixels = 0,
+                maxChannelDelta = 0,
                 lazyDiffImage = lazy { paint(expectedPixels, actualPixels, width, height, channelTolerance) },
             )
         }
 
         var mismatched = 0
+        var pronounced = 0
+        var maxDelta = 0
         for (y in 0 until height) {
             for (x in 0 until width) {
-                if (!samePixel(expectedPixels, actualPixels, x, y, channelTolerance)) mismatched++
+                if (samePixel(expectedPixels, actualPixels, x, y, channelTolerance)) continue
+                mismatched++
+                // Only reached for a pixel that already differs, so the matching bulk of an image
+                // pays nothing for it.
+                val delta =
+                    if (expectedPixels.contains(x, y) && actualPixels.contains(x, y)) {
+                        channelDelta(expectedPixels.at(x, y), actualPixels.at(x, y))
+                    } else {
+                        MAX_CHANNEL
+                    }
+                if (delta > floorChannelDelta) pronounced++
+                if (delta > maxDelta) maxDelta = delta
             }
         }
 
         return DiffResult(
             mismatchedPixels = mismatched,
             totalPixels = width * height,
+            pronouncedPixels = pronounced,
+            maxChannelDelta = maxDelta,
             lazyDiffImage = lazy { paint(expectedPixels, actualPixels, width, height, channelTolerance) },
         )
     }
@@ -164,10 +205,27 @@ public object ImageDiffer {
             channelWithin(expected, actual, 0, channelTolerance)
     }
 
+    private fun channelDelta(
+        expected: Int,
+        actual: Int,
+    ): Int =
+        maxOf(
+            channelDistance(expected, actual, 24),
+            channelDistance(expected, actual, 16),
+            channelDistance(expected, actual, 8),
+            channelDistance(expected, actual, 0),
+        )
+
+    private fun channelDistance(
+        expected: Int,
+        actual: Int,
+        shift: Int,
+    ): Int = abs(((expected shr shift) and 0xFF) - ((actual shr shift) and 0xFF))
+
     private fun channelWithin(
         expected: Int,
         actual: Int,
         shift: Int,
         tolerance: Int,
-    ): Boolean = abs(((expected shr shift) and 0xFF) - ((actual shr shift) and 0xFF)) <= tolerance
+    ): Boolean = channelDistance(expected, actual, shift) <= tolerance
 }
