@@ -29,8 +29,10 @@ history for the exact rename map if cross-referencing old code/docs that still s
 ./gradlew :viddik-testing-core:jvmTest -Pfilter="Canary - Dialog"
                                                    # One fixture of the self-test suite; the consumer-
                                                    # facing spelling of this is the plugin's --component
-./gradlew :viddik-processor:test                  # Fixture-metadata resolution (FixtureMetadataTest) —
-                                                   # plain kotlin("jvm"), so `test`, not `jvmTest`
+./gradlew :viddik-processor:test                  # Fixture-metadata resolution (FixtureMetadataTest) and
+                                                   # a 3000-fixture registry compiled with the Compose
+                                                   # plugin (RegistryCompileTest, ~20 s) — plain
+                                                   # kotlin("jvm"), so `test`, not `jvmTest`
 ./gradlew :viddik-gradle-plugin:test              # ViddikLayoutTest, the naming fork
 ./gradlew ktlintCheck                             # Style check (all 5 modules; jvmTest sourceSet in
                                                    # viddik-testing-core is deliberately excluded, see
@@ -187,6 +189,19 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     module had no test source set before). `resolveFixture()` takes `ScreenshotArgs` + a nullable
     `PreviewArgs` and returns null after reporting through an `onError` callback rather than picking a
     winner when the two contradict each other.
+  - `RegistryEmitter.kt` — the registry's KotlinPoet, KSP-free for the same reason: `registryFiles()`
+    takes the resolved entries and returns the files, and `RegistryCompileTest` compiles them.
+    **The registry is chunked, one file per 200 entries** (`REGISTRY_CHUNK_SIZE`), and both halves
+    of that are load-bearing. One `buildList` put every entry in `GeneratedViddikRegistry.<clinit>`,
+    ~35 bytes each, and the JVM's 64 KB per method ended it between 1000 and 2000 fixtures ("Method
+    too large", found by a synthetic 2000-fixture benchmark on 01.10.2026). Splitting into functions
+    of one file was measured and is not enough: the Compose compiler hoists every capture-free `content`
+    lambda into a `ComposableSingletons` class *per file*, ~18 bytes each in its `<clinit>`, which
+    was 55 KB at 3000 fixtures. So `components` concatenates `viddikRegistryChunkN()` — `internal`
+    top-level functions, each in `GeneratedViddikRegistryChunkN.kt` with its own singletons — in
+    order, because `dynamicTests` shards by index. The test holds every generated method under
+    16 KB, a quarter of the limit, and checks that the singletons were there to measure. A shrinking
+    module was checked too: KSP deletes the chunk files a run no longer writes.
   - `ViddikSymbolProcessor` — scans `@ViddikScreenshot`-annotated functions, one-shot (`invoked` guard,
     since KSP calls `process()` repeatedly across rounds). Also reads
     `androidx.compose.ui.tooling.preview.Preview` off the same function when there is one —
@@ -250,7 +265,8 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       variants of one downstream consumer's list-item state had identical `toString()` output in their
       first 60 characters and collapsed into one golden file before the index suffix was added
       unconditionally.
-    - Generates `GeneratedViddikRegistry` (object, `val components: List<ViddikComponent>`) always, and
+    - Generates `GeneratedViddikRegistry` (object, `val components: List<ViddikComponent>`, built from
+      the chunk files described under `RegistryEmitter.kt`) always, and
       `GeneratedViddikTests` (a `@TestFactory` JUnit5 class calling `ViddikEngine.dynamicTests(...)`)
       only when `generateTests` is true. Both go in package `io.github.youndie.viddik.generated`.
     - KotlinPoet `CodeBlock`s use `·` (middle dot) as escaped literal spaces in generated string

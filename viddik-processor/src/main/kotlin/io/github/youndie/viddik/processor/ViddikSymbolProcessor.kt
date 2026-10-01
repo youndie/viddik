@@ -10,14 +10,11 @@ import com.google.devtools.ksp.symbol.KSAnnotation
 import com.google.devtools.ksp.symbol.KSFile
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSType
-import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.LIST
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.ksp.writeTo
 
@@ -41,37 +38,6 @@ private const val PREVIEW_WRAPPER_FQN = "androidx.compose.ui.tooling.preview.Pre
 // A multipreview may itself be built out of multipreviews, so collection recurses. The cap is a
 // backstop against an annotation cycle, which the Kotlin compiler permits between annotation classes.
 private const val MAX_MULTIPREVIEW_DEPTH = 8
-private const val GENERATED_PACKAGE = "io.github.youndie.viddik.generated"
-
-private sealed class ViddikEntry {
-    abstract val group: String
-
-    data class Static(
-        val name: String,
-        override val group: String,
-        val width: Int,
-        val height: Int,
-        val qualifiedFunctionName: String,
-        val forceDark: Boolean = false,
-        val fontScale: Float = 1f,
-        val tolerancePercent: Double? = null,
-        val wrapperQualifiedName: String? = null,
-    ) : ViddikEntry()
-
-    data class Parameterized(
-        val name: String,
-        override val group: String,
-        val width: Int,
-        val height: Int,
-        val qualifiedFunctionName: String,
-        val providerQualifiedName: String,
-        val darkVariant: Boolean,
-        val forceDark: Boolean = false,
-        val fontScale: Float = 1f,
-        val tolerancePercent: Double? = null,
-        val wrapperQualifiedName: String? = null,
-    ) : ViddikEntry()
-}
 
 public class ViddikSymbolProcessor(
     private val codeGenerator: CodeGenerator,
@@ -228,134 +194,7 @@ public class ViddikSymbolProcessor(
         entries: List<ViddikEntry>,
         dependencies: Dependencies,
     ) {
-        val componentClass = ClassName("io.github.youndie.viddik.annotations", "ViddikComponent")
-        val compositionLocalProvider = ClassName("androidx.compose.runtime", "CompositionLocalProvider")
-        val localScreenshotDarkTheme = ClassName("io.github.youndie.viddik", "LocalViddikDarkTheme")
-        val listOfComponent = LIST.parameterizedBy(componentClass)
-
-        val initializer = CodeBlock.builder().add("buildList·{\n").indent()
-        entries.forEach { entry ->
-            when (entry) {
-                is ViddikEntry.Static -> {
-                    val call = wrapped(CodeBlock.of("%L()", entry.qualifiedFunctionName), entry.wrapperQualifiedName)
-                    val contentLambda =
-                        if (entry.forceDark) {
-                            CodeBlock.of(
-                                "{ %T(%T provides true) { %L } }",
-                                compositionLocalProvider,
-                                localScreenshotDarkTheme,
-                                call,
-                            )
-                        } else {
-                            CodeBlock.of("{ %L }", call)
-                        }
-                    initializer.add(
-                        "add(%T(name = %S, group = %S, width = %L, height = %L, fontScale = %Lf, %Lcontent = %L))\n",
-                        componentClass,
-                        entry.name,
-                        entry.group,
-                        entry.width,
-                        entry.height,
-                        entry.fontScale,
-                        toleranceArgument(entry.tolerancePercent),
-                        contentLambda,
-                    )
-                }
-
-                is ViddikEntry.Parameterized -> {
-                    val providerClass = ClassName.bestGuess(entry.providerQualifiedName)
-                    val previewLabelClass =
-                        ClassName("io.github.youndie.viddik.annotations", "ViddikPreviewLabel")
-                    // A night-mode @Preview makes the fixture itself dark, so the base entry — not just
-                    // the extra darkVariant one below — has to be wrapped.
-                    val paramCall =
-                        wrapped(CodeBlock.of("%L(param)", entry.qualifiedFunctionName), entry.wrapperQualifiedName)
-                    val baseContent =
-                        if (entry.forceDark) {
-                            CodeBlock.of(
-                                "{·%T(%T·provides·true)·{·%L·}·}",
-                                compositionLocalProvider,
-                                localScreenshotDarkTheme,
-                                paramCall,
-                            )
-                        } else {
-                            CodeBlock.of("{·%L·}", paramCall)
-                        }
-                    initializer.add(
-                        "addAll(%T().values.mapIndexed·{·index,·param·->·\n" +
-                            "··val·label·=·((param·as?·%T)?.previewLabel·?:·param.toString()).take(60)\n" +
-                            "··%T(name·=·%S·+·\"·-·\"·+·label·+·\"·#\"·+·index,·group·=·%S,·width·=·%L,·height·=·%L,·" +
-                            "fontScale·=·%Lf,·%Lcontent·=·%L)\n" +
-                            "}.toList())\n",
-                        providerClass,
-                        previewLabelClass,
-                        componentClass,
-                        entry.name,
-                        entry.group,
-                        entry.width,
-                        entry.height,
-                        entry.fontScale,
-                        toleranceArgument(entry.tolerancePercent),
-                        baseContent,
-                    )
-                    if (entry.darkVariant) {
-                        initializer.add(
-                            "addAll(%T().values.mapIndexed·{·index,·param·->·\n" +
-                                "··val·label·=·((param·as?·%T)?.previewLabel·?:·param.toString()).take(60)\n" +
-                                "··%T(name·=·%S·+·\"·-·\"·+·label·+·\"·#\"·+·index·+·\"·Dark\",·" +
-                                "group·=·%S,·width·=·%L,·height·=·%L,·" +
-                                "fontScale·=·%Lf,·%Lcontent·=·{·%T(%T·provides·true)·{·%L·} })\n" +
-                                "}.toList())\n",
-                            providerClass,
-                            previewLabelClass,
-                            componentClass,
-                            entry.name,
-                            entry.group,
-                            entry.width,
-                            entry.height,
-                            entry.fontScale,
-                            toleranceArgument(entry.tolerancePercent),
-                            compositionLocalProvider,
-                            localScreenshotDarkTheme,
-                            paramCall,
-                        )
-                    }
-                }
-            }
-        }
-        initializer.unindent().add("}")
-
-        FileSpec
-            .builder(GENERATED_PACKAGE, "GeneratedViddikRegistry")
-            // GENERATED CODE MUST NOT FAIL A CONSUMER'S -Werror BUILD.
-            //
-            // The label lookup is written defensively — `param as? ViddikPreviewLabel` and a
-            // `toString()` behind it — because a parameter provider may yield anything. When it
-            // yields a final type that does not implement the interface, and `String` is the common
-            // case, the compiler proves both dead and says so: "this cast can never succeed",
-            // "redundant call of conversion method". Correct warnings about code nobody wrote by
-            // hand and nobody can edit, and a module compiling with `allWarningsAsErrors` — which is
-            // what the shared conventions turn on — fails on them.
-            .addAnnotation(
-                AnnotationSpec
-                    .builder(Suppress::class)
-                    .addMember("%S", "CAST_NEVER_SUCCEEDS")
-                    .addMember("%S", "USELESS_CAST")
-                    .addMember("%S", "USELESS_ELVIS")
-                    .addMember("%S", "USELESS_CALL_ON_NOT_NULL")
-                    .addMember("%S", "REDUNDANT_CALL_OF_CONVERSION_METHOD")
-                    .build(),
-            ).addType(
-                TypeSpec
-                    .objectBuilder("GeneratedViddikRegistry")
-                    .addProperty(
-                        PropertySpec
-                            .builder("components", listOfComponent)
-                            .initializer(initializer.build())
-                            .build(),
-                    ).build(),
-            ).build()
-            .writeTo(codeGenerator, dependencies)
+        registryFiles(entries).forEach { it.writeTo(codeGenerator, dependencies) }
     }
 
     /**
@@ -379,7 +218,7 @@ public class ViddikSymbolProcessor(
         shard: Int,
     ) {
         val engineClass = ClassName("io.github.youndie.viddik.core", "ViddikEngine")
-        val registryClass = ClassName(GENERATED_PACKAGE, "GeneratedViddikRegistry")
+        val registryClass = ClassName(GENERATED_PACKAGE, REGISTRY_NAME)
         val dynamicTestClass = ClassName("org.junit.jupiter.api", "DynamicTest")
         val testFactoryClass = ClassName("org.junit.jupiter.api", "TestFactory")
         val name = if (shards == 1) "GeneratedViddikTests" else "GeneratedViddikTests$shard"
@@ -569,33 +408,3 @@ private fun FixtureMetadata.toEntries(
         )
     return if (darkVariant) listOf(base, base.copy(name = "$name Dark", forceDark = true)) else listOf(base)
 }
-
-/**
- * A fixture's own `tolerancePercent`, as an argument to splice into the `ViddikComponent(...)` call —
- * or nothing at all when it didn't state one.
- *
- * Emitted only when it was asked for, rather than always as `tolerancePercent = null`: the argument
- * doesn't exist on `ViddikComponent` before 0.3.1, and a registry that names it unconditionally would
- * stop compiling against an older `viddik-annotations` for every fixture in the module rather than for
- * the fixtures actually using the feature.
- */
-private fun toleranceArgument(tolerancePercent: Double?): CodeBlock =
-    tolerancePercent?.let { CodeBlock.of("tolerancePercent·=·%L,·", it) } ?: CodeBlock.of("")
-
-/**
- * Composes a fixture call inside its `@PreviewWrapper`, if it declared one.
- *
- * The provider is instantiated at the call site rather than resolved through anything of viddik's:
- * `PreviewWrapperProvider.Wrap` is a `@Composable` member, so the generated code is the same shape a
- * developer would write by hand, and a provider that needs constructor arguments simply doesn't
- * compile — which is the right moment to find out.
- */
-private fun wrapped(
-    call: CodeBlock,
-    wrapperQualifiedName: String?,
-): CodeBlock =
-    if (wrapperQualifiedName == null) {
-        call
-    } else {
-        CodeBlock.of("%T().Wrap·{·%L·}", ClassName.bestGuess(wrapperQualifiedName), call)
-    }
