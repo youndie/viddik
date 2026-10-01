@@ -1,8 +1,16 @@
 package io.github.youndie.viddik.gradle
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.artifacts.transform.CacheableTransform
+import org.gradle.api.artifacts.transform.InputArtifact
+import org.gradle.api.artifacts.transform.TransformAction
+import org.gradle.api.artifacts.transform.TransformOutputs
+import org.gradle.api.artifacts.transform.TransformParameters
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.FileSystemLocation
+import org.gradle.api.provider.Provider
+import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.IgnoreEmptyDirectories
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputDirectory
@@ -16,6 +24,7 @@ import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 import java.io.File
+import java.util.zip.ZipFile
 
 /**
  * Copies the main compilation's output with everything but the declarations taken out, for the test
@@ -53,8 +62,7 @@ public abstract class ViddikKspDeclarationsTask : DefaultTask() {
         classes.asFileTree.visit { details ->
             if (details.isDirectory) return@visit
             val path = details.relativePath.pathString
-            val bytes = details.file.readBytes()
-            val snapshot = if (path.endsWith(CLASS_SUFFIX)) DeclarationSnapshot.of(bytes) else bytes
+            val snapshot = DeclarationSnapshot.ofEntry(path, details.file.readBytes())
             if (snapshot != null) {
                 kept += path
                 writeIfChanged(File(out, path), snapshot)
@@ -74,9 +82,51 @@ public abstract class ViddikKspDeclarationsTask : DefaultTask() {
         target.parentFile.mkdirs()
         target.writeBytes(bytes)
     }
+}
+
+/**
+ * The same snapshot for a project dependency on the test compile classpath — a sibling module's jar
+ * or class directory — for the layout where the fixtures sit in a module of their own and every
+ * component they draw comes from elsewhere (issue #53).
+ *
+ * A transform rather than a task: it reads the artifact Gradle hands it and nothing of the module that
+ * produced it, so it stays within what isolated projects allow; each artifact is snapshotted and
+ * cached on its own; and a body edit in one module re-runs the transform for that module's jar only,
+ * producing the same files as before, which is what keeps KSP's input unchanged.
+ */
+@CacheableTransform
+public abstract class ViddikDeclarationsTransform : TransformAction<TransformParameters.None> {
+    @get:InputArtifact
+    @get:Classpath
+    public abstract val artifact: Provider<FileSystemLocation>
+
+    override fun transform(outputs: TransformOutputs) {
+        val input = artifact.get().asFile
+        val out = outputs.dir(input.name.removeSuffix(".jar") + "-declarations")
+        val write = { path: String, bytes: ByteArray ->
+            DeclarationSnapshot.ofEntry(path, bytes)?.let { snapshot ->
+                File(out, path).apply { parentFile.mkdirs() }.writeBytes(snapshot)
+            }
+        }
+        if (input.isDirectory) {
+            input
+                .walkTopDown()
+                .filter { it.isFile }
+                .forEach { write(it.relativeTo(input).invariantSeparatorsPath, it.readBytes()) }
+        } else if (input.isFile) {
+            ZipFile(input).use { zip ->
+                zip
+                    .entries()
+                    .asSequence()
+                    .filter { !it.isDirectory && !it.name.startsWith(MANIFEST_DIR) }
+                    .forEach { entry -> write(entry.name, zip.getInputStream(entry).use { it.readBytes() }) }
+            }
+        }
+    }
 
     private companion object {
-        const val CLASS_SUFFIX = ".class"
+        // The jar manifest carries nothing a processor reads, and some builds stamp it per build.
+        const val MANIFEST_DIR = "META-INF/MANIFEST"
     }
 }
 
@@ -84,6 +134,14 @@ public abstract class ViddikKspDeclarationsTask : DefaultTask() {
 internal object DeclarationSnapshot {
     private const val FUNCTION_KEY_META = "Landroidx/compose/runtime/internal/FunctionKeyMeta;"
     private const val NOT_IMPLEMENTED = Opcodes.ACC_ABSTRACT or Opcodes.ACC_NATIVE
+
+    private const val CLASS_SUFFIX = ".class"
+
+    /** A class file through [of]; any other file — `*.kotlin_module` among them — as it is. */
+    fun ofEntry(
+        path: String,
+        bytes: ByteArray,
+    ): ByteArray? = if (path.endsWith(CLASS_SUFFIX)) of(bytes) else bytes
 
     /**
      * The snapshot of [bytes], or `null` for a class no processor can refer to: a synthetic one, or

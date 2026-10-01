@@ -5,6 +5,10 @@ import com.google.devtools.ksp.gradle.KspExtension
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.artifacts.ArtifactView
+import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
+import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.file.FileCollection
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.provider.Provider
@@ -43,6 +47,9 @@ import java.util.concurrent.Callable
 public class ViddikPlugin : Plugin<Project> {
     /** The KSP argument is project-wide; a module with two JVM targets must not add it twice. */
     private var generateTestsOptionApplied = false
+
+    /** The declarations transform is registered once per project, however many JVM targets it has. */
+    private var declarationsTransformRegistered = false
 
     override fun apply(target: Project) {
         val extension = target.extensions.create(EXTENSION_NAME, ViddikExtension::class.java)
@@ -300,6 +307,7 @@ public class ViddikPlugin : Plugin<Project> {
         target: KotlinTarget,
     ) {
         plugins.withId(KSP_PLUGIN_ID) {
+            registerDeclarationsTransform()
             val main = target.compilations.getByName(MAIN_COMPILATION)
             val test = target.compilations.getByName(TEST_COMPILATION)
             // compileTestKotlin → kspTestKotlin, compileTestKotlinDesktop → kspTestKotlinDesktop.
@@ -315,8 +323,25 @@ public class ViddikPlugin : Plugin<Project> {
                     task.outputDir.set(layout.buildDirectory.dir("$KSP_DECLARATIONS_DIR/$kspTaskName"))
                     task.onlyIf { extension.kspDeclarationSnapshot.get() }
                 }
+            // Other modules of this build on the test compile classpath, as they are and as snapshots.
+            // Only jars and class directories, both sides: those are the two kinds the transform takes,
+            // so every artifact swapped out has its snapshot swapped in, and anything else a project
+            // publishes stays on the classpath untouched.
+            val compileClasspath = configurations.getByName(test.compileDependencyConfigurationName)
+            val projectArtifacts =
+                files(
+                    compileClasspath.projectArtifacts(ArtifactTypeDefinition.JAR_TYPE),
+                    compileClasspath.projectArtifacts(ArtifactTypeDefinition.JVM_CLASS_DIRECTORY),
+                )
+            val projectDeclarations = compileClasspath.projectArtifacts(DECLARATIONS_ARTIFACT_TYPE)
             tasks.withType(KspAATask::class.java).configureEach { ksp ->
-                if (ksp.name == kspTaskName) ksp.dependsOn(snapshot)
+                if (ksp.name == kspTaskName) {
+                    ksp.dependsOn(
+                        extension.kspDeclarationSnapshot.map { on ->
+                            if (on) listOf(snapshot, projectDeclarations) else emptyList()
+                        },
+                    )
+                }
             }
             // By path, and through this project's own container: under isolated projects a project
             // may not touch tasks other projects put in the graph, which `graph.allTasks` does.
@@ -329,11 +354,39 @@ public class ViddikPlugin : Plugin<Project> {
                         .get()
                         .kspConfig.libraries
                 val declared = files(*libraries.from.toTypedArray())
-                val real = mainClasses.files
                 libraries.setFrom(
-                    files(Callable { declared.filter { it !in real } }),
+                    files(
+                        Callable {
+                            val swapped = mainClasses.files + projectArtifacts.files
+                            declared.filter { it !in swapped }
+                        },
+                    ),
+                    projectDeclarations,
                     snapshot.flatMap { it.outputDir },
                 )
+            }
+        }
+    }
+
+    /** The artifacts of other modules of this build on [this] classpath, with the given artifact type. */
+    private fun Configuration.projectArtifacts(artifactType: String) =
+        incoming
+            .artifactView { view: ArtifactView.ViewConfiguration ->
+                view.componentFilter { it is ProjectComponentIdentifier }
+                view.attributes { it.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, artifactType) }
+                // Lenient: a project artifact of another kind has no snapshot, and is simply not in
+                // either view — so it is neither removed from the classpath nor replaced.
+                view.lenient(true)
+            }.files
+
+    /** Jar → snapshot and class directory → snapshot, registered once per project. */
+    private fun Project.registerDeclarationsTransform() {
+        if (declarationsTransformRegistered) return
+        declarationsTransformRegistered = true
+        listOf(ArtifactTypeDefinition.JAR_TYPE, ArtifactTypeDefinition.JVM_CLASS_DIRECTORY).forEach { from ->
+            dependencies.registerTransform(ViddikDeclarationsTransform::class.java) { spec ->
+                spec.from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, from)
+                spec.to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, DECLARATIONS_ARTIFACT_TYPE)
             }
         }
     }
@@ -612,6 +665,7 @@ public class ViddikPlugin : Plugin<Project> {
         const val TEST_COMPILATION = "test"
         const val COMPILE_TASK_PREFIX = "compile"
         const val KSP_DECLARATIONS_DIR = "viddik/ksp-declarations"
+        const val DECLARATIONS_ARTIFACT_TYPE = "viddik-declarations"
         const val GENERATED_TESTS_PATTERN = "*GeneratedViddikTests*"
         const val SHOWROOM_MAIN_CLASS = "io.github.youndie.viddik.core.ViddikShowroomLauncher"
 

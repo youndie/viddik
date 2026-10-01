@@ -424,6 +424,14 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       `whenReady` is allowed but `graph.allTasks` is not — it hands a project tasks created by other
       projects — so the task is found by path (`graph.hasTask`) and fetched from the project's own
       container.
+    - **Project dependencies go through `ViddikDeclarationsTransform`** (issue #53). A module with
+      no main sources and fixtures that draw components from sibling modules had nothing to snapshot:
+      the components arrive as those modules' `jvmJar`, and a body edit there still left KSP 100% dirty.
+      The transform (jar or class directory → `viddik-declarations`) snapshots each project artifact
+      on the test compile classpath; the swap replaces exactly the project jars and class directories
+      the two lenient artifact views return, so an artifact of another kind is neither dropped nor
+      replaced. A transform rather than a task because it reads only the artifact, which isolated
+      projects allow, and caches per artifact.
   - `ViddikEngine` — the record/verify harness (Paparazzi-equivalent). `VIDDIK_RECORD_MODE` env var
     (not a Gradle property — set it in the shell/CI step) toggles write-golden vs compare-and-fail.
     - **Recording writes only what a verification would reject** (`recordGolden`, issue #29). It renders

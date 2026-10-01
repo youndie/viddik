@@ -164,15 +164,18 @@ public interface ViddikExtension {
     public val sceneReuse: Property<Boolean>
 
     /**
-     * Whether the test source set's KSP run reads a declarations-only snapshot of the main classes
-     * instead of the classes themselves. **On by default.** Applies to JVM targets.
+     * Whether the test source set's KSP run reads a declarations-only snapshot of the main classes —
+     * and of the other modules of this build it depends on — instead of the classes themselves. **On
+     * by default.** Applies to JVM targets.
      *
      * The registry depends on the fixtures and on what their declarations say, never on a function
      * body. KSP cannot tell the two apart: it re-runs on any change to a class on its classpath, and
      * with Compose that is almost every edit — the compiler records each composable's source offsets
      * in `@FunctionKeyMeta`, so retyping one string literal changes every composable after it in the
      * file. The snapshot drops bodies, debug information and those offsets, and is rewritten only when
-     * a declaration changes, so editing a component no longer re-runs KSP over every fixture.
+     * a declaration changes, so editing a component no longer re-runs KSP over every fixture. A module
+     * that holds only fixtures and draws components from sibling modules gets the same through an
+     * artifact transform over those modules' jars and class directories.
      *
      * Measured on a module of 1000 fixtures: editing a component and recording one golden went from
      * ~4.1 s to ~3.0 s, of which KSP had been ~0.8 s. Turn it off if a processor in the same KSP run
