@@ -13,6 +13,17 @@ Renamed `screenshot-*` → `viddik-*` (modules, packages, classes) as part of th
 history for the exact rename map if cross-referencing old code/docs that still say
 `DesktopScreenshot`/`ScreenshotComponent`/etc.
 
+## Where the documentation lives
+
+Three readers, three places. **README.md** is for someone deciding whether to use viddik: what it is,
+the comparison table, installation, one fixture, the tasks, and a list of what else it does with a
+link per topic — about 600 words, and it should stay near that. **`docs/*.md`** is for someone using
+it: fixtures, running, portability, the showroom, design parity, configuration (with every plugin
+option and the compatibility table). **This file** is for whoever changes the code: mechanisms,
+measurements, dead ends. What changed in which version goes in the GitHub release notes, not in any
+of the three. A new feature gets a section in the `docs/` file it belongs to and, if a newcomer needs
+to know it exists, one line in README's list.
+
 ## Build & Test Commands
 
 ```bash
@@ -926,7 +937,8 @@ the numbers above were measured; it is no longer needed to produce or verify gol
 project is pinned to one CMP *line*, not to a range. Neither end of that coupling is declared anywhere
 a resolver can see it: a consumer on a different line gets a `NoSuchMethodError` /
 `IllegalAccessError` on the first captured frame, at runtime, with everything having compiled clean.
-That is why README carries a compatibility table and why a CMP line bump is a minor version here.
+That is why `docs/configuration.md` carries a compatibility table and why a CMP line bump is a minor
+version here.
 
 The 1.11 → 1.12 port (viddik 0.2.0) was two independent breakages, both in `CaptureEngine.kt`:
 
