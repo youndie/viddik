@@ -11,7 +11,7 @@ dokka = "2.2.0"
 # `ktlint` is gone from this file — it named the PLUGIN version here and the TOOL version in nine
 # other repositories, which is one key meaning two things. `sborka.lint` applies the plugin and pins
 # the tool.
-sborka = "0.4.0.89"
+sborka = "0.4.0.111"
 # The compiler comes with them: `wip`, the catalog a sborka release publishes, carries kotlin,
 # ksp, agp and composeMultiplatform, plus the Compose artefacts more than one repository names.
 # The three this repository is alone in needing — ui-test-junit4 and the two KSP ones — are
