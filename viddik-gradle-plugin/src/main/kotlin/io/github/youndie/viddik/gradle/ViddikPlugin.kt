@@ -1,5 +1,6 @@
 package io.github.youndie.viddik.gradle
 
+import com.google.devtools.ksp.gradle.KspAATask
 import com.google.devtools.ksp.gradle.KspExtension
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
@@ -13,10 +14,13 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.gradle.language.base.plugins.LifecycleBasePlugin
+import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
+import org.jetbrains.kotlin.gradle.plugin.KotlinTarget
 import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
+import java.util.concurrent.Callable
 
 /**
  * Wires viddik screenshot testing into a module.
@@ -76,11 +80,18 @@ public class ViddikPlugin : Plugin<Project> {
                 .getByType(KotlinMultiplatformExtension::class.java)
                 .targets
                 .withType(KotlinJvmTarget::class.java)
-                .all { jvmTarget -> target.wireSources(extension, jvmTarget.layout()) }
+                .all { jvmTarget ->
+                    target.wireSources(extension, jvmTarget.layout())
+                    target.wireKspDeclarations(extension, jvmTarget)
+                }
             target.wireCommonRegistry(extension)
         }
         target.plugins.withId(JVM_PLUGIN_ID) {
             target.wireSources(extension, ViddikLayout.forJvm())
+            target.wireKspDeclarations(
+                extension,
+                target.extensions.getByType(KotlinJvmProjectExtension::class.java).target,
+            )
         }
 
         target.afterEvaluate { project ->
@@ -271,6 +282,58 @@ public class ViddikPlugin : Plugin<Project> {
         }
 
         addViddikDependencies(extension, layout)
+    }
+
+    /**
+     * Hands the test source set's KSP run a declarations-only snapshot of the main classes instead of
+     * the classes themselves — see [ViddikExtension.kspDeclarationSnapshot] for why.
+     *
+     * The swap happens in `taskGraph.whenReady`, and has to: KSP fills its classpath in the action it
+     * registers its task with, and Gradle runs that action *after* any `configureEach` declared
+     * earlier, so a `configureEach` sees an empty classpath and anything it sets is appended to rather
+     * than replaced. By `whenReady` every scheduled task is configured and none has been fingerprinted.
+     * The dependency on the snapshot task is declared up front instead, because the graph is already
+     * built by then.
+     */
+    private fun Project.wireKspDeclarations(
+        extension: ViddikExtension,
+        target: KotlinTarget,
+    ) {
+        plugins.withId(KSP_PLUGIN_ID) {
+            val main = target.compilations.getByName(MAIN_COMPILATION)
+            val test = target.compilations.getByName(TEST_COMPILATION)
+            // compileTestKotlin → kspTestKotlin, compileTestKotlinDesktop → kspTestKotlinDesktop.
+            val kspTaskName = test.compileKotlinTaskName.replaceFirst(COMPILE_TASK_PREFIX, KSP_TASK_PREFIX)
+            val mainClasses = main.output.classesDirs
+            val snapshot =
+                tasks.register(
+                    "viddik${kspTaskName.replaceFirstChar { it.uppercaseChar() }}Declarations",
+                    ViddikKspDeclarationsTask::class.java,
+                ) { task ->
+                    task.description = "Snapshots the declarations of the main classes for :$kspTaskName."
+                    task.classes.from(mainClasses)
+                    task.outputDir.set(layout.buildDirectory.dir("$KSP_DECLARATIONS_DIR/$kspTaskName"))
+                    task.onlyIf { extension.kspDeclarationSnapshot.get() }
+                }
+            tasks.withType(KspAATask::class.java).configureEach { ksp ->
+                if (ksp.name == kspTaskName) ksp.dependsOn(snapshot)
+            }
+            gradle.taskGraph.whenReady { graph ->
+                if (!extension.kspDeclarationSnapshot.get()) return@whenReady
+                graph.allTasks
+                    .filterIsInstance<KspAATask>()
+                    .filter { it.project == this && it.name == kspTaskName }
+                    .forEach { ksp ->
+                        val libraries = ksp.kspConfig.libraries
+                        val declared = files(*libraries.from.toTypedArray())
+                        val real = mainClasses.files
+                        libraries.setFrom(
+                            files(Callable { declared.filter { it !in real } }),
+                            snapshot.flatMap { it.outputDir },
+                        )
+                    }
+            }
+        }
     }
 
     /**
@@ -523,6 +586,7 @@ public class ViddikPlugin : Plugin<Project> {
         // and note that `captureComposable`/`verify` called directly keep the old behaviour.
         shards.convention(2)
         sceneReuse.convention(true)
+        kspDeclarationSnapshot.convention(true)
         verifyOnCheck.convention(false)
         excludeFromTestTask.convention(true)
         showroomTargets.convention(false)
@@ -542,7 +606,10 @@ public class ViddikPlugin : Plugin<Project> {
         const val JVM_PLUGIN_ID = "org.jetbrains.kotlin.jvm"
         const val KSP_PLUGIN_ID = "com.google.devtools.ksp"
 
+        const val MAIN_COMPILATION = "main"
         const val TEST_COMPILATION = "test"
+        const val COMPILE_TASK_PREFIX = "compile"
+        const val KSP_DECLARATIONS_DIR = "viddik/ksp-declarations"
         const val GENERATED_TESTS_PATTERN = "*GeneratedViddikTests*"
         const val SHOWROOM_MAIN_CLASS = "io.github.youndie.viddik.core.ViddikShowroomLauncher"
 

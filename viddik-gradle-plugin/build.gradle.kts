@@ -23,6 +23,10 @@ dependencies {
     compileOnly(wip.kotlin.gradle.plugin)
     compileOnly("com.google.devtools.ksp:symbol-processing-gradle-plugin:${wip.versions.ksp.get()}")
 
+    // Shipped with the plugin, unlike the two above: nothing in the consumer's build pins it, and it
+    // only ever reads class files (ViddikKspDeclarationsTask).
+    implementation(libs.asm)
+
     testImplementation(kotlin("test"))
 }
 
