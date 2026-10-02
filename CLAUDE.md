@@ -73,9 +73,10 @@ signal working, not a flake.
 While iterating on viddik itself, downstream consumers resolve `io.github.youndie.viddik:viddik-*` via
 `mavenLocal()` — after any change here, `publishToMavenLocal` before rebuilding them (the other two
 sources, Central and `wip`, are under "Consumers"). Versions are bumped by hand in `gradle.properties`
-(plain `version`, currently `0.7.0`); Gradle/consumers cache by exact version+build hash so a
-republish under the same version is picked up by build cache invalidation, not by version diffing —
-if a consumer's build looks stale after a republish, `--no-build-cache` or bump the version.
+(plain `version`, currently `0.7.1` — the head names the next release, see "Publishing");
+Gradle/consumers cache by exact version+build hash so a republish under the same version is picked up
+by build cache invalidation, not by version diffing — if a consumer's build looks stale after a
+republish, `--no-build-cache` or bump the version.
 
 ## Module Structure
 
@@ -969,15 +970,25 @@ at `https://reposilite.kotlin.website/snapshots`. `REPOSILITE_USER` / `REPOSILIT
 Gradle properties; CI passes them as `ORG_GRADLE_PROJECT_*` environment variables, which Gradle maps
 to properties on its own.
 
-**The version is the plain `version` key** in `gradle.properties` (`0.7.0`) — `viddik.version` was one
+**The version is the plain `version` key** in `gradle.properties` (`0.7.1`) — `viddik.version` was one
 more name for the same thing — and `-PVERSION` wins over it when given. That is the whole difference
 between the three channels:
 
 | | version | how |
 |---|---|---|
-| `wip` snapshots | `0.7.0.<run number>` | push to `main`, `publish-viddik-snapshot.yaml` |
-| Maven Central | `0.7.0` | dispatch `central.yaml` in `youndie/sborka` |
-| `~/.m2` | `0.7.0` | `./gradlew publishToMavenLocal`, no credentials |
+| `wip` snapshots | `0.7.1.<run number>` | push to `main`, `publish-viddik-snapshot.yaml` (`determine-version`) |
+| Maven Central | `0.7.0`, the last release | dispatch `central.yaml` in `youndie/sborka`, version given there |
+| `~/.m2` | `0.7.1` | `./gradlew publishToMavenLocal`, no credentials |
+
+**The head names the next release, not the last one.** In Maven's ordering (and Renovate's) `X.Y.Z.N`
+sorts *above* `X.Y.Z`, so a head left on a released number publishes builds that rank above the
+release they came after: after 0.7.0 the head stayed `0.7.0`, `wip` got `0.7.0.49` (the release commit
+itself) to `0.7.0.51`, and Renovate offered `0.7.0.51` to consumers instead of `0.7.0` from Central;
+0.6.1 had done the same with `0.6.1.41`–`0.6.1.48`. Hence the order around a release: if it is not the
+patch the head already names, the release PR moves the head to that number (a minor after `0.7.1.N`
+builds is still above them); once the release is published and tagged, the next change moves the head
+to the next patch, before anything else lands on `main`. Published builds are never removed — each one
+is superseded by the first build under the new head.
 
 `sborka.central=true` in `gradle.properties` is the whole of what makes the Central path possible: the
 convention reads it and applies `com.vanniktech.maven.publish`, which is what produces the javadoc jar
@@ -989,7 +1000,7 @@ plainly: the run appears in sborka's Actions tab rather than in this repository'
 
 ```bash
 gh workflow run central.yaml --repo youndie/sborka \
-  -f repository=youndie/viddik -f ref=main -f version=0.7.0 \
+  -f repository=youndie/viddik -f ref=main -f version=0.7.1 \
   -f runner=ubuntu-latest -f konan-cache=true -f gate=true
 ```
 
@@ -1021,8 +1032,10 @@ one a given consumer is wired for is in its own `settings.gradle.kts`:
   which does not look at Central unless told to) and `google()` beside the second, for the
   `androidx.*` artifacts Compose Multiplatform's desktop variants pull in.
 - **`wip`** (`https://reposilite.kotlin.website/snapshots`, read is anonymous) — every push to `main`
-  as `0.7.0.<run number>`. This is where a version lives while it is being tried out in a consumer
-  before it is worth a release.
+  as `<head>.<run number>` (`0.7.1.<run number>` now). This is where a version lives while it is
+  being tried out in a consumer before it is worth a release. Such a build sorts above the release of
+  the same head, so a consumer on one is not offered that release as an upgrade: moving it to Central
+  is a hand edit.
 - **`mavenLocal()`** — a fresh clone needs `publishToMavenLocal` run by hand first; there is no CI
   wiring that publishes viddik before building a consumer.
 
