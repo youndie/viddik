@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: youndie/sborka/.github/actions/setup-kotlin@main
+      - uses: youndie/sborka/.github/actions/setup-kotlin@v0.5.0.130
 
       # RECORD, not verify, and it is a deliberate choice rather than a shortcut. The sample fixtures
       # theme themselves with MaterialTheme's default typography — which is what a consumer's own
@@ -53,7 +53,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: youndie/sborka/.github/actions/setup-kotlin@main
+      - uses: youndie/sborka/.github/actions/setup-kotlin@v0.5.0.130
 
       - name: Link the iOS showroom executable
         working-directory: samples
