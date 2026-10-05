@@ -33,7 +33,7 @@ jobs:
       # Java and Gradle in one step. The action installs both 21 and 25: the toolchain is sborka's
       # default (25) while the bytecode follows `sborka.jvmFloor` (21), and a missing toolchain is
       # either a download nobody asked for or a failure naming a vendor.
-      - uses: youndie/sborka/.github/actions/setup-kotlin@main
+      - uses: youndie/sborka/.github/actions/setup-kotlin@v0.5.0.130
 
       # gradlew (the shell script) is checked out with CRLF line endings on Windows, so run the .bat
       # there rather than forcing bash on it.
