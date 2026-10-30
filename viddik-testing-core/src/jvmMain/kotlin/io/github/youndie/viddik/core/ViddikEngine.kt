@@ -16,6 +16,7 @@ private const val TOLERANCE_PERCENT_PROPERTY = "viddik.tolerancePercent"
 private const val CHANNEL_TOLERANCE_PROPERTY = "viddik.channelTolerance"
 private const val MIN_MISMATCHED_PIXELS_PROPERTY = "viddik.minMismatchedPixels"
 private const val FLOOR_CHANNEL_DELTA_PROPERTY = "viddik.floorChannelDelta"
+private const val PRONOUNCED_PIXEL_BUDGET_PROPERTY = "viddik.pronouncedPixelBudget"
 private const val DEFAULT_SNAPSHOTS_DIR = "src/desktopTest/snapshots"
 private const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
 
@@ -114,6 +115,15 @@ public object ViddikEngine {
             System.getProperty(MIN_MISMATCHED_PIXELS_PROPERTY)?.toIntOrNull() ?: DEFAULT_MIN_MISMATCHED_PIXELS,
         floorChannelDelta: Int =
             System.getProperty(FLOOR_CHANNEL_DELTA_PROPERTY)?.toIntOrNull() ?: DEFAULT_FLOOR_CHANNEL_DELTA,
+        // A fixture that states its own tolerance does so for residue that is not faint — text under a
+        // RenderEffect — so the run's budget of pronounced pixels, meant for everything else, does not
+        // apply to it: the number it states is the whole of its allowance.
+        pronouncedPixelBudget: Int =
+            if (component.tolerancePercent != null) {
+                UNLIMITED_PRONOUNCED_PIXELS
+            } else {
+                System.getProperty(PRONOUNCED_PIXEL_BUDGET_PROPERTY)?.toIntOrNull() ?: UNLIMITED_PRONOUNCED_PIXELS
+            },
         record: Boolean = recordMode,
         force: Boolean = forceRecordMode,
     ) {
@@ -137,6 +147,7 @@ public object ViddikEngine {
                 channelTolerance = channelTolerance,
                 minMismatchedPixels = minMismatchedPixels,
                 floorChannelDelta = floorChannelDelta,
+                pronouncedPixelBudget = pronouncedPixelBudget,
             )
             return
         }
@@ -156,7 +167,7 @@ public object ViddikEngine {
 
         val expected = readGolden(component, goldenFile)
         val diff = ImageDiffer.diff(expected, actual, channelTolerance, floorChannelDelta)
-        if (!diff.matches(tolerancePercent, minMismatchedPixels)) {
+        if (!diff.matches(tolerancePercent, minMismatchedPixels, pronouncedPixelBudget)) {
             // The diff paints exactly the pixels that changed, so on its own it says where but never
             // what (#63). The render and a copy of the golden go beside it, which also makes the
             // directory a complete answer when it is the only thing a CI run uploads.
@@ -170,12 +181,19 @@ public object ViddikEngine {
             // failure reads as "the suite's threshold" when it was really this fixture's own number.
             val toleranceOrigin =
                 if (component.tolerancePercent == tolerancePercent) " from @ViddikScreenshot" else ""
+            val budget =
+                if (pronouncedPixelBudget == UNLIMITED_PRONOUNCED_PIXELS) {
+                    ""
+                } else {
+                    " with at most $pronouncedPixelBudget px past delta $floorChannelDelta " +
+                        "(${diff.pronouncedPixels} are)"
+                }
             error(
                 "Screenshot mismatch for ${component.group}/${component.name}: " +
                     "${diff.mismatchedPixels}/${diff.totalPixels} px differ (${"%.2f".format(
                         diff.mismatchPercent,
                     )}%, max channel delta ${diff.maxChannelDelta}; " +
-                    "tolerance $tolerancePercent%$toleranceOrigin or $minMismatchedPixels px " +
+                    "tolerance $tolerancePercent%$toleranceOrigin$budget or $minMismatchedPixels px " +
                     "within a channel delta of $floorChannelDelta). " +
                     "Diff saved to ${diffFile.path}, the render to ${actualFile.path}, " +
                     "the golden to ${expectedFile.path}",
@@ -242,6 +260,7 @@ public object ViddikEngine {
         channelTolerance: Int,
         minMismatchedPixels: Int,
         floorChannelDelta: Int,
+        pronouncedPixelBudget: Int,
     ) {
         val existing =
             if (force) {
@@ -253,7 +272,7 @@ public object ViddikEngine {
             }
         if (existing != null) {
             val diff = ImageDiffer.diff(existing, actual, channelTolerance, floorChannelDelta)
-            if (diff.matches(tolerancePercent, minMismatchedPixels)) {
+            if (diff.matches(tolerancePercent, minMismatchedPixels, pronouncedPixelBudget)) {
                 RecordTally.keptOne(displayNameFor(component))
                 return
             }

@@ -78,6 +78,9 @@ tasks.withType<Test>().configureEach {
     // draws them and the check has the right font to read. Eating our own dog food: a fixture that
     // starts drawing a character Roboto lacks fails here rather than on a contributor's other OS.
     systemProperty("viddik.glyphCheck", "true")
+    // The value docs/portability.md recommends (#64), held here so the three-OS check is what proves
+    // these goldens' cross-OS residue fits it — the budget is off by default, so nothing else would.
+    systemProperty("viddik.pronouncedPixelBudget", "16")
     // `-PsceneReuse=true` runs the whole suite against one shared scene (#40). The two paths have to
     // produce the same goldens, and the only way to keep that true is to be able to run both.
     providers.gradleProperty("sceneReuse").orNull?.let { systemProperty("viddik.sceneReuse", it) }

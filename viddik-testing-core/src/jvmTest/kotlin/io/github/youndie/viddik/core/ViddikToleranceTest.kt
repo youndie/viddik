@@ -23,6 +23,7 @@ private const val GOLDEN_NAME = "Engine_Tolerance.png"
 
 private const val BLUE_ARGB = 0xFF0000FF.toInt()
 private const val TOLERANCE_PROPERTY = "viddik.tolerancePercent"
+private const val BUDGET_PROPERTY = "viddik.pronouncedPixelBudget"
 
 /**
  * A fixture's own `tolerancePercent` against a golden it cannot possibly match — solid red compared to
@@ -70,8 +71,8 @@ class ViddikToleranceTest {
 
         // Both directions: the fixture is the deliberate statement, so it decides whether it is the
         // looser of the two or the stricter one.
-        withGlobalTolerance("0.05") { verifyAgainst(dir, tolerance = 100.0) }
-        withGlobalTolerance("100.0") {
+        withProperties(TOLERANCE_PROPERTY to "0.05") { verifyAgainst(dir, tolerance = 100.0) }
+        withProperties(TOLERANCE_PROPERTY to "100.0") {
             assertThrows<IllegalStateException> { verifyAgainst(dir, tolerance = 0.0) }
         }
     }
@@ -82,7 +83,39 @@ class ViddikToleranceTest {
     ) {
         writeGolden(dir)
 
-        withGlobalTolerance("100.0") { verifyAgainst(dir, tolerance = null) }
+        withProperties(TOLERANCE_PROPERTY to "100.0", BUDGET_PROPERTY to null) {
+            verifyAgainst(dir, tolerance = null)
+        }
+    }
+
+    @Test
+    fun `a fixture without one is held to the run's pronounced-pixel budget inside the run's share`(
+        @TempDir dir: File,
+    ) {
+        writeGolden(dir)
+
+        // #64: every pixel is pronounced (red against blue), so a share of 100% would take it and a
+        // budget of 16 does not.
+        val failure =
+            withProperties(TOLERANCE_PROPERTY to "100.0", BUDGET_PROPERTY to "16") {
+                assertThrows<IllegalStateException> { verifyAgainst(dir, tolerance = null) }
+            }
+
+        assertTrue(
+            "at most 16 px past delta" in failure.message.orEmpty(),
+            "the failure should name the budget that decided it: ${failure.message}",
+        )
+    }
+
+    @Test
+    fun `a fixture's own tolerance is not cut short by the run's budget`(
+        @TempDir dir: File,
+    ) {
+        writeGolden(dir)
+
+        // A fixture states its own tolerance for residue that is not faint, which is exactly what the
+        // budget counts — so its number is the whole of its allowance.
+        withProperties(BUDGET_PROPERTY to "0") { verifyAgainst(dir, tolerance = 100.0) }
     }
 
     @Test
@@ -127,20 +160,24 @@ class ViddikToleranceTest {
         check(ImageIO.write(blue, "png", File(dir, GOLDEN_NAME))) { "no PNG writer" }
     }
 
-    private fun withGlobalTolerance(
-        value: String,
-        block: () -> Unit,
-    ) {
-        val previous = System.getProperty(TOLERANCE_PROPERTY)
-        System.setProperty(TOLERANCE_PROPERTY, value)
+    /** Sets each property (null clears it) for [block], and puts back what was there before. */
+    private fun <T> withProperties(
+        vararg values: Pair<String, String?>,
+        block: () -> T,
+    ): T {
+        val previous = values.map { (name, _) -> name to System.getProperty(name) }
+        values.forEach { (name, value) -> set(name, value) }
         try {
-            block()
+            return block()
         } finally {
-            if (previous == null) {
-                System.clearProperty(TOLERANCE_PROPERTY)
-            } else {
-                System.setProperty(TOLERANCE_PROPERTY, previous)
-            }
+            previous.forEach { (name, value) -> set(name, value) }
         }
+    }
+
+    private fun set(
+        name: String,
+        value: String?,
+    ) {
+        if (value == null) System.clearProperty(name) else System.setProperty(name, value)
     }
 }
