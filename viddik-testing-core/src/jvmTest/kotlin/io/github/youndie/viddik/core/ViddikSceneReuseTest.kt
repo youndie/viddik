@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,8 +15,12 @@ import androidx.compose.ui.unit.dp
 import io.github.youndie.viddik.generated.GeneratedViddikRegistry
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.api.assertTimeoutPreemptively
 import java.awt.image.BufferedImage
+import java.time.Duration
 
 private const val SCENE_REUSE_PROPERTY = "viddik.sceneReuse"
 
@@ -70,6 +76,34 @@ class ViddikSceneReuseTest {
             assertEquals(0, differingPixels(fresh.getValue(fixture.name), reverse.getValue(fixture.name)), fixture.name)
         }
         assertEquals(0, differingPixels(repeated[0], repeated[1]), "the same fixture twice")
+    }
+
+    /**
+     * A fixture that throws mid-measure — two `LazyColumn` items sharing a key — used to leave the
+     * shared scene alive and wedged: the bad fixture got its real exception, and every later one in
+     * the same scene waited out the 120 s answer timeout (#62). The fixture after it has to render
+     * promptly, and exactly as a fresh scene draws it.
+     */
+    @Test
+    fun `a fixture that throws does not wedge the scene for the next one`() {
+        val healthy = FIXTURES.last()
+        val fresh = healthy.captureFresh()
+
+        System.setProperty(SCENE_REUSE_PROPERTY, "true")
+        val failure =
+            assertThrows<IllegalArgumentException> {
+                captureComposable(width = healthy.width, height = healthy.height) {
+                    LazyColumn {
+                        items(listOf("same", "same"), key = { it }) {
+                            Box(Modifier.fillMaxSize().background(Color.Gray))
+                        }
+                    }
+                }
+            }
+        assertTrue(failure.message!!.contains("same"), "the bad fixture gets its own error: ${failure.message}")
+
+        val after = assertTimeoutPreemptively(Duration.ofSeconds(30)) { healthy.capture() }
+        assertEquals(0, differingPixels(fresh, after), "the fixture after the one that threw")
     }
 
     private fun capture(

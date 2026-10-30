@@ -265,19 +265,37 @@ private object CaptureSession {
     @Volatile
     private var fatal: Throwable? = null
 
+    /**
+     * Set once the live scene must not be handed another fixture: a capture threw in it, or a caller
+     * gave up waiting on it.
+     *
+     * A fixture that throws mid-measure (two `LazyColumn` items sharing a key) gets its own exception
+     * back, but the scene it was thrown in is left half-way through a pass, and the next capture on
+     * it never completes. The worker is alive, so [fatal] stays empty, and before this every later
+     * fixture of the same canvas waited out [ANSWER_TIMEOUT_SECONDS] and failed with a timeout naming
+     * nobody (#62). Set by the worker *before* it answers, so the caller's next fixture cannot reach
+     * [start] while it still reads as reusable.
+     */
+    @Volatile
+    private var retired = false
+
     fun capture(request: CaptureRequest): BufferedImage {
         val job = Job(request)
         synchronized(lock) {
             start(IntSize(request.width, request.canvasHeight))
             jobs.put(job)
         }
-        val answer =
-            job.answer.poll(ANSWER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                ?: throw IllegalStateException(
-                    "The shared capture scene did not answer within ${ANSWER_TIMEOUT_SECONDS}s. " +
-                        "Turn viddik.sceneReuse off to fall back to a scene per capture.",
-                    fatal,
-                )
+        val answer = job.answer.poll(ANSWER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        if (answer == null) {
+            // One timeout per wedged scene, not one per fixture after it.
+            retired = true
+            throw IllegalStateException(
+                "The shared capture scene did not answer within ${ANSWER_TIMEOUT_SECONDS}s. The fixture " +
+                    "captured before this one in the same scene is the likely cause; the next fixture " +
+                    "gets a new scene. Turning viddik.sceneReuse off gives every fixture a scene of its own.",
+                fatal,
+            )
+        }
         return answer.getOrThrow()
     }
 
@@ -292,9 +310,10 @@ private object CaptureSession {
      * scene per capture, which is exactly what it costs today.
      */
     private fun start(size: IntSize) {
-        if (worker != null && windowSize == size && fatal == null) return
+        if (worker != null && windowSize == size && fatal == null && !retired) return
         stop()
         fatal = null
+        retired = false
         jobs = LinkedBlockingQueue()
         windowSize = size
         worker =
@@ -307,9 +326,14 @@ private object CaptureSession {
 
     private fun stop() {
         val running = worker ?: return
-        val pill = Job(null)
-        jobs.put(pill)
-        pill.answer.poll(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        // A retired scene takes no more jobs — it is either already tearing itself down or wedged —
+        // so a pill would only be waited on for nothing. What is left is to let its teardown finish
+        // before the next harness opens, since two in one JVM wedge.
+        if (running.isAlive && !retired) {
+            val pill = Job(null)
+            jobs.put(pill)
+            pill.answer.poll(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        }
         running.join(CLOSE_TIMEOUT_SECONDS * MILLIS_PER_SECOND)
         worker = null
         windowSize = null
@@ -359,7 +383,15 @@ private object CaptureSession {
                         job.answer.offer(Result.failure(IllegalStateException("closed")))
                         return@runDesktopComposeUiTest
                     }
-                    job.answer.put(runCatching { harness.capture(request, throughHarness = false) })
+                    val result = runCatching { harness.capture(request, throughHarness = false) }
+                    if (result.isFailure) {
+                        // The scene the fixture threw in is not trusted with another: a fresh one
+                        // costs ~12 ms, a wedged one costs every later fixture its timeout (#62).
+                        retired = true
+                        job.answer.put(result)
+                        return@runDesktopComposeUiTest
+                    }
+                    job.answer.put(result)
                 }
             }
         } finally {
