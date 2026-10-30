@@ -76,6 +76,16 @@ public interface ViddikExtension {
     public val floorChannelDelta: Property<Int>
 
     /**
+     * How many pronounced pixels — past [floorChannelDelta] — the share ([tolerancePercent]) may
+     * absorb. A share grows with the canvas, so without this a screen-sized fixture lets through an
+     * edit a one-row fixture fails: at 0.05% a 360×800 screen absorbs a status dot turning red. A
+     * count does not grow, and cross-OS residue is faint, so 16–32 separates the two whatever the
+     * fixture's size. Unset by default, which is unlimited — the comparison as it was before the
+     * option existed. Becomes the `viddik.pronouncedPixelBudget` system property.
+     */
+    public val pronouncedPixelBudget: Property<Int>
+
+    /**
      * Where the design references live — PNGs exported from the design the fixtures were built to,
      * named exactly like the goldens (`<group>_<name>.png`), relative to the module directory.
      * Defaults to `design/` under [snapshotsDir]. Becomes the `viddik.designDir` system property.

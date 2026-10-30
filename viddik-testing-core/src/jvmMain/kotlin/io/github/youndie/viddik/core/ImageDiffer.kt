@@ -30,6 +30,15 @@ public const val DEFAULT_MIN_MISMATCHED_PIXELS: Int = 16
 // comparison whatever the count. Twice the measured residue, and still well short of a glyph edge.
 public const val DEFAULT_FLOOR_CHANNEL_DELTA: Int = 96
 
+// The share (tolerancePercent) has no such rule of its own unless a budget is given, and a share grows
+// with the canvas: at 0.05% a 360x800 screen absorbs 144 px, enough for a 10dp status dot to turn from
+// green to red (90 px at delta 199), which the same edit on a one-row fixture fails at 0.45% (#64). A
+// budget is an absolute number of pronounced pixels the share may absorb, so the fixture's size stops
+// deciding how large an edit gets through. Unlimited by default, which is the comparison as it was:
+// a finite default would fail goldens recorded under the old rule, and a fixture that states its own
+// tolerancePercent for non-faint residue (text under a RenderEffect) is exactly what it would fail.
+public const val UNLIMITED_PRONOUNCED_PIXELS: Int = Int.MAX_VALUE
+
 public class DiffResult internal constructor(
     public val mismatchedPixels: Int,
     public val totalPixels: Int,
@@ -56,15 +65,19 @@ public class DiffResult internal constructor(
     public val mismatchPercent: Double get() = if (totalPixels == 0) 0.0 else mismatchedPixels * 100.0 / totalPixels
 
     /**
-     * True when the share of mismatched pixels is within [tolerancePercent], or when there are at most
-     * [minMismatchedPixels] of them and none is [pronounced][pronouncedPixels] — the floor is for
-     * faint residue, not for a few pixels that changed outright.
+     * True when there are at most [minMismatchedPixels] mismatched pixels and none is
+     * [pronounced][pronouncedPixels] — the floor is for faint residue, not for a few pixels that
+     * changed outright — or when the share of mismatched pixels is within [tolerancePercent] and at
+     * most [pronouncedPixelBudget] of them are pronounced. The budget is a count, not a share, so the
+     * size of an edit the share lets through no longer grows with the canvas.
      */
     public fun matches(
         tolerancePercent: Double = DEFAULT_TOLERANCE_PERCENT,
         minMismatchedPixels: Int = DEFAULT_MIN_MISMATCHED_PIXELS,
+        pronouncedPixelBudget: Int = UNLIMITED_PRONOUNCED_PIXELS,
     ): Boolean =
-        (mismatchedPixels <= minMismatchedPixels && pronouncedPixels == 0) || mismatchPercent <= tolerancePercent
+        (mismatchedPixels <= minMismatchedPixels && pronouncedPixels == 0) ||
+            (mismatchPercent <= tolerancePercent && pronouncedPixels <= pronouncedPixelBudget)
 }
 
 private const val RED_MASK = 0xFFFF0000.toInt()

@@ -106,8 +106,27 @@ viddik {
 }
 ```
 
+The share has a second blind spot: it grows with the canvas. At 0.05% a 360×800 screen absorbs 144
+px — enough for a 10dp status dot to turn from green to red (90 px at a delta of 199), an edit the
+same row fails on its own at 0.45%. A module that widens the share for its own font's edge noise
+widens that in proportion. `pronouncedPixelBudget` caps how many **pronounced** pixels (past
+`floorChannelDelta`) the share may absorb, as a count rather than a share, so the fixture's size
+stops deciding how large an edit gets through; faint residue is still the share's to absorb. It is
+off by default, which is the comparison as it always was. 16–32 is the recommended value — viddik's
+own suite runs at 16 on Linux, macOS and Windows — and the first verify under it may fail goldens
+that an edit already went past unnoticed: re-record those. A fixture that states its own
+`@ViddikScreenshot(tolerancePercent = ...)` is exempt, since the residue it pays for (text under a
+`RenderEffect`, below) is the pronounced kind.
+
+```kotlin
+viddik {
+    pronouncedPixelBudget = 16 // default unlimited
+}
+```
+
 Without the plugin these are the `viddik.tolerancePercent`, `viddik.channelTolerance`,
-`viddik.minMismatchedPixels` and `viddik.floorChannelDelta` system properties. The same numbers decide
+`viddik.minMismatchedPixels`, `viddik.floorChannelDelta` and `viddik.pronouncedPixelBudget` system
+properties. The same numbers decide
 what a record writes: a golden the comparison accepts stays on disk unless `--force` says otherwise.
 
 ## Text under blur and glass

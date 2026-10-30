@@ -170,6 +170,46 @@ class ImageDifferTest {
         assertFalse(result.matches(tolerancePercent = 0.0), "a resized fixture is not residue")
     }
 
+    @Test
+    fun `a status dot turning red passes a screen on the share alone and fails it under a budget`() {
+        // #64: 90 px at delta 199 is 0.03% of 360x800, inside the default share, while the same edit
+        // is 0.45% of a one-row fixture and fails there. The budget is a count, so the screen fails too.
+        val golden = solid(360, 800, OPAQUE_BLACK)
+        val actual = solid(360, 800, OPAQUE_BLACK)
+        for (x in 0 until 90) actual.setRGB(x, 0, argb(199, 0, 0))
+
+        val result = ImageDiffer.diff(golden, actual)
+
+        assertEquals(90, result.pronouncedPixels)
+        assertTrue(result.matches(), "unlimited by default: the comparison as it was")
+        assertFalse(result.matches(pronouncedPixelBudget = 16), "90 pronounced pixels past a budget of 16")
+    }
+
+    @Test
+    fun `faint residue spread over a screen still fits the share under a budget`() {
+        // What the share is for: many pixels, none of them pronounced (delta 47, the cross-OS worst case).
+        val golden = solid(360, 800, OPAQUE_BLACK)
+        val actual = solid(360, 800, OPAQUE_BLACK)
+        for (x in 0 until 100) actual.setRGB(x, 0, argb(47, 47, 47))
+
+        val result = ImageDiffer.diff(golden, actual)
+
+        assertEquals(0, result.pronouncedPixels)
+        assertTrue(result.matches(pronouncedPixelBudget = 0), "100 faint px past the floor, inside the share")
+    }
+
+    @Test
+    fun `the budget is inclusive`() {
+        val golden = solid(360, 800, OPAQUE_BLACK)
+        val actual = solid(360, 800, OPAQUE_BLACK)
+        for (x in 0 until 20) actual.setRGB(x, 0, argb(255, 0, 0))
+
+        val result = ImageDiffer.diff(golden, actual)
+
+        assertTrue(result.matches(pronouncedPixelBudget = 20))
+        assertFalse(result.matches(pronouncedPixelBudget = 19))
+    }
+
     private fun solid(
         width: Int,
         height: Int,

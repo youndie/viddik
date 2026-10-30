@@ -333,6 +333,17 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       `floorChannelDelta`; `floorChannelDelta = 255` is the old count-only floor. The share
       (`tolerancePercent`) still counts every pixel alike — a per-fixture tolerance is how the
       filtered-layer hole, whose residue is *not* faint, is paid for.
+    - **The share can be held to a count of pronounced pixels** (`pronouncedPixelBudget`, issue #64).
+      A share grows with the canvas: at 0.05% a 360×800 screen absorbs a status dot turning red (90
+      px at delta 199) that a one-row fixture fails at 0.45%, and since record shares the comparison
+      the stale screen golden is kept too — downstream, a shared icon change rewrote 6 of ~30
+      screens. `matches` now also requires `pronouncedPixels <= pronouncedPixelBudget` on the share
+      path. **Unlimited by default** (`UNLIMITED_PRONOUNCED_PIXELS`), deliberately: a finite default
+      fails goldens recorded under the old rule on the first verify, which is a minor-version
+      decision, not a patch. A fixture with its own `tolerancePercent` is exempt — `verify`'s
+      default argument — because what it pays for is the filtered-layer residue, which is
+      pronounced. This module's `jvmTest` runs at 16 (`build.gradle.kts`), so the three-OS check is
+      what shows the recommended value holds for real goldens.
   - **Per-fixture tolerance** (0.3.1). `ViddikComponent.tolerancePercent: Double?` carries what
     `@ViddikScreenshot(tolerancePercent = ...)` asked for, and `ViddikEngine.verify` resolves
     component → `viddik.tolerancePercent` system property → `DEFAULT_TOLERANCE_PERCENT` in its own
