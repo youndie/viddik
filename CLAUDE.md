@@ -830,6 +830,20 @@ Moving the term to the scene's canvas — the engine renders the scene itself in
 a fixture drawing a character its font lacks, or a component building `TextStyle(...)` from scratch
 (no `fontFamily`, so `FontFamily.Default` resolves to a host font).
 
+**The locale is a host input too, and the plugin pins it** (`viddik { locale }`, `"en-US"` by
+default, issue #65). Compose Resources pick `values-<lang>` by `Locale.getDefault()`: downstream, one
+of two self-hosted runners started its JVMs German, and the same commit went green or red by runner.
+Two Gradle details decide the shape. Gradle seeds every forked JVM's `user.language`/`user.country`/
+`user.variant` from the *daemon's* locale and keeps them out of the task's `systemProperties` map
+(an init-script probe sees only `user.script` there), so `JAVA_TOOL_OPTIONS` loses to the daemon and
+the locale was never an up-to-date input; `systemProperty(...)` on the task does override the seeded
+value (checked on the worker command line under a German daemon: the daemon `-Duser.language=de`,
+both shard forks `en`), and `inputs.property("viddikLocale", tag)` makes it an input explicitly.
+`localeSystemProperties` (`ViddikLocale.kt`, `ViddikLocaleTest`) sets every field, an empty one
+included, and with `user.language` on the command line the JDK stops filling in the platform's
+separate `user.language.format`, so formatting follows. The engine's own messages format numbers with
+`Locale.ROOT` regardless — a German JVM printed `24,08%`.
+
 ### The hole: text inside a filtered layer
 
 Portability is solved for everything the scene canvas can reach, and there is exactly one place it

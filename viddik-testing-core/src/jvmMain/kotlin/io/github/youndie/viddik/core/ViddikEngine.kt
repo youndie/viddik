@@ -4,6 +4,7 @@ import io.github.youndie.viddik.annotations.ViddikComponent
 import org.junit.jupiter.api.DynamicTest
 import java.awt.image.BufferedImage
 import java.io.File
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
 
@@ -191,6 +192,7 @@ public object ViddikEngine {
             error(
                 "Screenshot mismatch for ${component.group}/${component.name}: " +
                     "${diff.mismatchedPixels}/${diff.totalPixels} px differ (${"%.2f".format(
+                        Locale.ROOT,
                         diff.mismatchPercent,
                     )}%, max channel delta ${diff.maxChannelDelta}; " +
                     "tolerance $tolerancePercent%$toleranceOrigin$budget or $minMismatchedPixels px " +
@@ -515,7 +517,10 @@ public object ViddikEngine {
                             DesignParityStatus.MISMATCH -> {
                                 "Design mismatch for ${displayNameFor(component)}: " +
                                     "${result.mismatchedPixels}/${result.totalPixels} px differ " +
-                                    "(${"%.2f".format(result.mismatchPercent)}%, tolerance $tolerancePercent% " +
+                                    "(${"%.2f".format(
+                                        Locale.ROOT,
+                                        result.mismatchPercent,
+                                    )}%, tolerance $tolerancePercent% " +
                                     "at ±$channelTolerance per channel). Diff saved to ${result.diff?.path}"
                             }
 

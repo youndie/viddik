@@ -79,6 +79,27 @@ host would` — instead of a golden that is stable on the machine that recorded 
 on the next one, with the moved pixels sitting *after* the character rather than on it. The bundled
 Roboto covers `‹ « < × … •` and none of `← → ↑ ↓ ✕ ▸`.
 
+## Locale: pinned for you
+
+The JVM's default locale is one more host input that reaches a golden: Compose Resources pick
+`values-<lang>` by `Locale.getDefault()`, so a fixture showing `stringResource(...)` renders
+"Abbrechen" on a German runner and "Cancel" on the next one. The plugin starts every JVM that
+records, verifies or measures design parity with **`en-US`**, whatever the host has, and the locale
+is an input of those tasks — a verify does not stay `UP-TO-DATE` across a change to it.
+
+```kotlin
+viddik {
+    locale = "de-DE"  // a BCP 47 tag; default "en-US"
+    // locale = null  // the host's locale, as before the option existed
+}
+```
+
+Goldens recorded before this option were recorded under whatever the recording machine had, so a
+module whose fixtures show string resources and whose machines are not English may see those turn
+red once; re-record them. Calling the engine without the plugin leaves the locale to the test task,
+where `systemProperty("user.language", "en")` and `systemProperty("user.country", "US")` pin it —
+`JAVA_TOOL_OPTIONS` does not, because Gradle hands the test JVM the daemon's locale.
+
 ## How a comparison decides
 
 A golden matches when at most **0.05%** of its pixels differ (`tolerancePercent`), a pixel counting as

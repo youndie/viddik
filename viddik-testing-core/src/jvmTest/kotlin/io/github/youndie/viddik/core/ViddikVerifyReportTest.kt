@@ -15,6 +15,7 @@ import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.io.TempDir
 import java.awt.image.BufferedImage
 import java.io.File
+import java.util.Locale
 import javax.imageio.ImageIO
 
 private const val WIDTH = 40
@@ -64,6 +65,24 @@ class ViddikVerifyReportTest {
         verify(dir, record = false)
 
         stale.forEach { assertFalse(it.exists(), "${it.name} outlived the failure it reported") }
+    }
+
+    @Test
+    fun `the failure reads the same under any default locale`(
+        @TempDir dir: File,
+    ) {
+        check(ImageIO.write(solid(BLUE_ARGB), "png", File(dir, "$STEM.png"))) { "no PNG writer" }
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.GERMANY)
+        val failure =
+            try {
+                assertThrows<IllegalStateException> { verify(dir, record = false) }
+            } finally {
+                Locale.setDefault(previous)
+            }
+
+        // #65: a German JVM used to print "100,00%".
+        assertTrue(failure.message!!.contains("(100.00%"), failure.message)
     }
 
     private fun verify(
