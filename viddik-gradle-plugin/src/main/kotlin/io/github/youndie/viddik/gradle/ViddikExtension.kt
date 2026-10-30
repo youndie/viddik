@@ -33,7 +33,8 @@ public interface ViddikExtension {
     public val snapshotsDir: Property<String>
 
     /**
-     * Where a failed comparison writes its `_DIFF.png`, relative to the module directory. Defaults to
+     * Where a failed comparison writes its `_DIFF.png`, `_ACTUAL.png` and `_EXPECTED.png`, relative to
+     * the module directory. Defaults to
      * viddik's own `build/reports/screenshots`. Becomes the `viddik.reportsDir` system property.
      */
     public val reportsDir: Property<String>

@@ -19,6 +19,12 @@ private const val FLOOR_CHANNEL_DELTA_PROPERTY = "viddik.floorChannelDelta"
 private const val DEFAULT_SNAPSHOTS_DIR = "src/desktopTest/snapshots"
 private const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
 
+/** What a failed verification writes beside each other in the reports directory; see [ViddikEngine.verify]. */
+private const val DIFF_SUFFIX = "_DIFF.png"
+private const val ACTUAL_SUFFIX = "_ACTUAL.png"
+private const val EXPECTED_SUFFIX = "_EXPECTED.png"
+private val REPORT_SUFFIXES = listOf(DIFF_SUFFIX, ACTUAL_SUFFIX, EXPECTED_SUFFIX)
+
 /** How every Git LFS pointer file begins; see [ViddikEngine.verify]. */
 private const val LFS_POINTER_HEADER = "version https://git-lfs.github.com/spec/"
 
@@ -135,6 +141,12 @@ public object ViddikEngine {
             return
         }
 
+        // What an earlier failure of this fixture left behind, so that the report directory holds
+        // this run's failures only. Per fixture rather than the whole directory: a shard or a
+        // --component run sees only some of them, and must not wipe another fork's report.
+        val reportStem = fileName.removeSuffix(".png")
+        REPORT_SUFFIXES.forEach { File(reportsDir, reportStem + it).delete() }
+
         if (!goldenFile.exists()) {
             error(
                 "No golden snapshot for ${component.group}/${component.name} at ${goldenFile.path}. " +
@@ -145,9 +157,15 @@ public object ViddikEngine {
         val expected = readGolden(component, goldenFile)
         val diff = ImageDiffer.diff(expected, actual, channelTolerance, floorChannelDelta)
         if (!diff.matches(tolerancePercent, minMismatchedPixels)) {
-            reportsDir.mkdirs()
-            val diffFile = File(reportsDir, fileName.removeSuffix(".png") + "_DIFF.png")
-            ImageIO.write(diff.diffImage, "png", diffFile)
+            // The diff paints exactly the pixels that changed, so on its own it says where but never
+            // what (#63). The render and a copy of the golden go beside it, which also makes the
+            // directory a complete answer when it is the only thing a CI run uploads.
+            val diffFile = File(reportsDir, reportStem + DIFF_SUFFIX)
+            val actualFile = File(reportsDir, reportStem + ACTUAL_SUFFIX)
+            val expectedFile = File(reportsDir, reportStem + EXPECTED_SUFFIX)
+            writePng(diff.diffImage, diffFile)
+            writePng(actual, actualFile)
+            goldenFile.copyTo(expectedFile, overwrite = true)
             // Naming where the tolerance came from matters once a fixture can carry its own: otherwise a
             // failure reads as "the suite's threshold" when it was really this fixture's own number.
             val toleranceOrigin =
@@ -159,7 +177,8 @@ public object ViddikEngine {
                     )}%, max channel delta ${diff.maxChannelDelta}; " +
                     "tolerance $tolerancePercent%$toleranceOrigin or $minMismatchedPixels px " +
                     "within a channel delta of $floorChannelDelta). " +
-                    "Diff saved to ${diffFile.path}",
+                    "Diff saved to ${diffFile.path}, the render to ${actualFile.path}, " +
+                    "the golden to ${expectedFile.path}",
             )
         }
     }

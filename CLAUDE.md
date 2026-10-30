@@ -476,6 +476,14 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       as cross-OS drift. A file starting with `version https://git-lfs.github.com/spec/` gets "is a
       Git LFS pointer … Run `git lfs pull`"; anything else gets "is not an image ImageIO can read".
       `ViddikUnreadableGoldenTest` pins both.
+    - **A failed verification writes three files, not one** (issue #63): `_DIFF.png`, plus the render
+      as `_ACTUAL.png` and a byte copy of the golden as `_EXPECTED.png`. The diff paints every
+      mismatched pixel solid red over the render, so it shows where but never what — on a real
+      screen the red block sits exactly over the text that changed — and the only way to see the new
+      render was a record that overwrites the golden. On CI the reports directory is the uploaded
+      artifact, so it has to be self-contained. `verify` deletes this fixture's three files before
+      comparing, per fixture rather than the whole directory, because a shard or a `--component` run
+      sees only some fixtures and must not wipe another fork's report. `ViddikVerifyReportTest`.
     `viddik.snapshotsDir`/`viddik.reportsDir` **system properties** (not env vars) override the
     defaults (`src/desktopTest/snapshots`, `build/reports/screenshots`) — needed because different
     consumer modules name their JVM target differently (`jvm()` vs `jvm("desktop")`), and

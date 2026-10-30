@@ -5,8 +5,12 @@
 ./gradlew :yourModule:viddikVerify   # compare against them; a mismatch fails with a _DIFF.png
 ```
 
-Goldens go to `src/<test source set>/snapshots/` (`snapshotsDir` changes it); a failed comparison
-writes `<group>_<name>_DIFF.png`, every mismatched pixel in red, to `build/reports/screenshots/`.
+Goldens go to `src/<test source set>/snapshots/` (`snapshotsDir` changes it). A failed comparison
+writes three files to `build/reports/screenshots/` (`reportsDir`): `<group>_<name>_DIFF.png`, every
+mismatched pixel in red; `_ACTUAL.png`, what the fixture renders now; and `_EXPECTED.png`, a copy of
+the golden. The diff says where the change is and paints over it, so the other two are how to see
+what it is, without a record that overwrites the golden. A fixture that passes removes the three
+files an earlier failure left.
 Recording does not validate anything — look at what it wrote before committing it.
 
 A golden that is not an image fails its fixture with the path in the message. With goldens in Git
