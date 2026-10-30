@@ -459,6 +459,13 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       what it kept — a silent no-op task reads exactly like a task that never ran. The tally behind it
       is keyed by fixture display name rather than a pair of counters, because `ViddikFilterTest`
       calls `dynamicTests` in the same JVM and would otherwise reset or inflate them.
+    - **Verify, unlike record, fails on an unreadable golden — by name** (`readGolden`, issue #61).
+      `ImageIO.read` returns `null` for a file it cannot decode, and that `null` reached the differ as
+      a bare `NullPointerException`. The usual cause is Git LFS: a clone or `git worktree add` without
+      `git lfs pull` leaves every golden a ~130-byte text pointer, and a suite-wide wall of NPEs read
+      as cross-OS drift. A file starting with `version https://git-lfs.github.com/spec/` gets "is a
+      Git LFS pointer … Run `git lfs pull`"; anything else gets "is not an image ImageIO can read".
+      `ViddikUnreadableGoldenTest` pins both.
     `viddik.snapshotsDir`/`viddik.reportsDir` **system properties** (not env vars) override the
     defaults (`src/desktopTest/snapshots`, `build/reports/screenshots`) — needed because different
     consumer modules name their JVM target differently (`jvm()` vs `jvm("desktop")`), and
