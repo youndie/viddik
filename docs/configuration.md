@@ -71,6 +71,7 @@ viddik {
 | `shards` | 2 | test classes and forks to spread the fixtures over ([running.md](running.md#speed)) |
 | `sceneReuse` | `true` | serve every capture from one Compose scene |
 | `kspDeclarationSnapshot` | `true` | let KSP see only declarations, so body edits don't re-run it |
+| `locale` | `"en-US"` | default locale of the screenshot JVMs; `null` keeps the host's ([portability.md](portability.md#locale-pinned-for-you)) |
 | `glyphCheck` | off | fail a fixture whose text the font cannot draw ([portability.md](portability.md#glyphs-the-font-does-not-have)) |
 | `glyphCheckFont` | bundled Roboto | the font `glyphCheck` reads |
 | `designDir` | `<snapshotsDir>/design` | the design PNGs for [design parity](design-parity.md) |

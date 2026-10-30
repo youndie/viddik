@@ -86,6 +86,17 @@ public interface ViddikExtension {
     public val pronouncedPixelBudget: Property<Int>
 
     /**
+     * The default locale of the JVMs that record, verify and measure design parity, as a BCP 47 tag.
+     * **`"en-US"` by default**, rather than whatever the host has: Compose Resources pick
+     * `values-<lang>` by `Locale.getDefault()`, so a fixture showing a string resource rendered German
+     * on a German runner and English on the next one, and the task stayed `UP-TO-DATE` across the
+     * change because the locale was not one of its inputs. Set as `user.language`, `user.script`,
+     * `user.country` and `user.variant` system properties, which are inputs. `null` leaves the host's
+     * locale in place, as before this option existed.
+     */
+    public val locale: Property<String>
+
+    /**
      * Where the design references live — PNGs exported from the design the fixtures were built to,
      * named exactly like the goldens (`<group>_<name>.png`), relative to the module directory.
      * Defaults to `design/` under [snapshotsDir]. Becomes the `viddik.designDir` system property.

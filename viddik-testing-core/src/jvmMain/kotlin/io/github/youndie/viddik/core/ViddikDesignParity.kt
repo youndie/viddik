@@ -126,7 +126,7 @@ internal class DesignParityReport(
                     }
 
                     else -> {
-                        append(" ${"%.2f".format(result.mismatchPercent)}%")
+                        append(" ${"%.2f".format(Locale.ROOT, result.mismatchPercent)}%")
                     }
                 }
                 result.diff?.let { append(" -> ${it.path}") }

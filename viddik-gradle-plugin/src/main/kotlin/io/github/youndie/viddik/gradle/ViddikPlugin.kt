@@ -617,6 +617,15 @@ public class ViddikPlugin : Plugin<Project> {
             extension.sceneReuse.orNull?.let { task.systemProperty(SCENE_REUSE_PROPERTY, it) }
             extension.glyphCheck.orNull?.let { task.systemProperty(GLYPH_CHECK_PROPERTY, it) }
             extension.glyphCheckFont.orNull?.let { task.systemProperty(GLYPH_CHECK_FONT_PROPERTY, it) }
+            // The host's locale is another input that leaks into a golden, through Compose Resources;
+            // see ViddikLocale.kt. Null is the way back to whatever the host has. Declared as an input
+            // of its own as well: Gradle keeps user.language/country/variant apart from the task's
+            // `systemProperties` (it seeds them from the daemon's locale), so those alone are not
+            // guaranteed to be what the up-to-date check and the cache key read.
+            extension.locale.orNull?.let { tag ->
+                task.systemProperties(localeSystemProperties(tag))
+                task.inputs.property("viddikLocale", tag)
+            }
 
             if (!generateTests) {
                 task.doFirst {
@@ -642,6 +651,7 @@ public class ViddikPlugin : Plugin<Project> {
         // and note that `captureComposable`/`verify` called directly keep the old behaviour.
         shards.convention(2)
         sceneReuse.convention(true)
+        locale.convention(DEFAULT_LOCALE)
         kspDeclarationSnapshot.convention(true)
         verifyOnCheck.convention(false)
         excludeFromTestTask.convention(true)
@@ -653,6 +663,7 @@ public class ViddikPlugin : Plugin<Project> {
 
     private companion object {
         const val EXTENSION_NAME = "viddik"
+        const val DEFAULT_LOCALE = "en-US"
         const val VERIFY_TASK = "viddikVerify"
         const val RECORD_TASK = "viddikRecord"
         const val DESIGN_PARITY_TASK = "viddikDesignParity"
