@@ -19,6 +19,9 @@ private const val FLOOR_CHANNEL_DELTA_PROPERTY = "viddik.floorChannelDelta"
 private const val DEFAULT_SNAPSHOTS_DIR = "src/desktopTest/snapshots"
 private const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
 
+/** How every Git LFS pointer file begins; see [ViddikEngine.verify]. */
+private const val LFS_POINTER_HEADER = "version https://git-lfs.github.com/spec/"
+
 /** The run-level entry a recording run appends to its fixtures; see [ViddikEngine.recordTests]. */
 internal const val RECORD_SUMMARY_TEST_NAME: String = "Record summary"
 
@@ -139,7 +142,7 @@ public object ViddikEngine {
             )
         }
 
-        val expected = ImageIO.read(goldenFile)
+        val expected = readGolden(component, goldenFile)
         val diff = ImageDiffer.diff(expected, actual, channelTolerance, floorChannelDelta)
         if (!diff.matches(tolerancePercent, minMismatchedPixels)) {
             reportsDir.mkdirs()
@@ -159,6 +162,37 @@ public object ViddikEngine {
                     "Diff saved to ${diffFile.path}",
             )
         }
+    }
+
+    /**
+     * The golden [verify] compares against, or a failure that names the file.
+     *
+     * `ImageIO.read` answers `null` for a file it cannot decode, and that `null` used to reach the
+     * differ as a bare `NullPointerException` — once per fixture, for a whole suite at a time when the
+     * goldens are in Git LFS and the checkout never ran `git lfs pull` (a fresh clone, a
+     * `git worktree add`): every PNG is then a ~130-byte text pointer. A wall of NPEs reads as "the
+     * renderer broke", so the pointer gets a message of its own.
+     */
+    private fun readGolden(
+        component: ViddikComponent,
+        goldenFile: File,
+    ): BufferedImage {
+        val image = runCatching { ImageIO.read(goldenFile) }.getOrNull()
+        if (image != null) return image
+        val what = "Golden for ${component.group}/${component.name} at ${goldenFile.path}"
+        error(
+            if (isLfsPointer(goldenFile)) {
+                "$what is a Git LFS pointer, not a PNG. Run `git lfs pull`."
+            } else {
+                "$what is not an image ImageIO can read. Run with $RECORD_MODE_ENV=true to replace it."
+            },
+        )
+    }
+
+    private fun isLfsPointer(file: File): Boolean {
+        val header = LFS_POINTER_HEADER.encodeToByteArray()
+        val head = file.inputStream().use { it.readNBytes(header.size) }
+        return head.contentEquals(header)
     }
 
     /**

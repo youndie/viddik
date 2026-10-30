@@ -9,6 +9,12 @@ Goldens go to `src/<test source set>/snapshots/` (`snapshotsDir` changes it); a 
 writes `<group>_<name>_DIFF.png`, every mismatched pixel in red, to `build/reports/screenshots/`.
 Recording does not validate anything — look at what it wrote before committing it.
 
+A golden that is not an image fails its fixture with the path in the message. With goldens in Git
+LFS, a checkout that never ran `git lfs pull` (a fresh clone, a `git worktree add`) has a text
+pointer in place of every PNG; verify says so — "is a Git LFS pointer, not a PNG" — instead of
+failing the whole suite with something that looks like a rendering problem. Recording replaces an
+unreadable golden rather than failing on it.
+
 ## What a record writes
 
 Recording renders every selected fixture, compares the render with the existing golden through the
