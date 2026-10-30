@@ -70,7 +70,9 @@ fixtures are visited in size order. The one constraint: no other Compose test th
 harness of its own may run in the same JVM, because two harnesses wedge each other. `viddikVerify`
 and `viddikRecord` run only the generated tests, so that holds there; set `sceneReuse = false` for a
 task that mixes them in. The goldens are the same either way — CI records viddik's own suite both
-ways on three operating systems and compares.
+ways on three operating systems and compares. A fixture that throws (two `LazyColumn` items with one
+key, say) fails with its own exception and takes its scene with it: the next fixture gets a fresh
+one, so one broken fixture costs one failure rather than a timeout for every fixture after it.
 
 **Several forks** (`shards`, two by default). Gradle divides test work by class, so `shards` emits
 that many test classes, each taking every Nth fixture, and sets a matching `maxParallelForks` on

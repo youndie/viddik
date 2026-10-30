@@ -372,6 +372,16 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       the harness, nothing answered, callers blocked forever, and an uncaught exception on a daemon
       thread goes to a stderr the test runner has taken over. It now records the failure and answers
       every waiting and future job with it, with a 120 s ceiling.
+    - **A capture that throws retires its scene** (`retired`, issue #62). A fixture throwing
+      mid-measure (duplicate `LazyColumn` keys) got its own exception back, but the scene was left
+      half-way through a pass with the worker alive: `fatal` stayed empty, `start()` kept the scene,
+      and every later fixture of that canvas waited out the 120 s and failed with a cause-less
+      timeout — measured downstream as a ~20 s run turning into hours. Now the worker sets `retired`
+      *before* answering and leaves the harness; the next `start()` joins its teardown (no pill: a
+      retired scene takes no jobs) and opens a fresh one. A caller that times out sets `retired`
+      too, so a wedge from some other cause costs one timeout, not one per fixture. The test that
+      pins it (`a fixture that throws does not wedge the scene for the next one`) timed out at 30 s
+      before the change.
     - **Every fixture arrives the same way.** The harness's own `setContent` is used once, for empty
       content; every fixture then goes through `ComposeScene.setContent`, so none of them is the
       special first one.
