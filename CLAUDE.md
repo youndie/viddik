@@ -734,7 +734,7 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       half way. `enableEdgeToEdge()`, because the platform enforces edge-to-edge only from 35: below it
       `WindowInsets.navigationBars` read zero, so a bottom sheet padding itself by it sat one bar lower
       than on 36. Before: 64 fixtures past 5% and 7 past 25%, with 31 and 34 agreeing against 36. After:
-      2 and 0, and what tops the page is shader glass on 31. When two columns agree against a third,
+      2 and 0, and what tops the page is an AGSL shader on 31. When two columns agree against a third,
       suspect the harness first.
     - **The capture is repeatable.** On the same renderer two complete runs were byte-identical on all
       811 captures of API 31 and of API 34, and a filtered run gave the same bytes as the full one (18 of
@@ -762,22 +762,22 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       evidence and not proof.
     - **It was not a race, or not only one.** The next full run lost the same sheet's pinned button and its
       scrim on 24 instead, 1 of 658, 10% from 27, with `settled` in place. The sheet draws that pinned block
-      as glass over a recorded backdrop layer, on purpose with no invalidation key, so a block a frame behind
+      from another layer's recording, on purpose with no invalidation key, so a block a frame behind
       stays behind: Compose is idle, every frame is the same, and two agreeing captures prove nothing. From 28
       `captureToImage()` goes through a forced redraw; below it the capture copies the screen as it is. So
       `redrawLayers()` now calls `ViewRootForTest.invalidateDescendants()`, which re-records every layer, before
       every screenshot and every PixelCopy below 28, twice, waiting for a drawn frame after each pass
       (`awaitDraw`, an `OnDrawListener`). Measured on two full API 24 runs: the button came back (0.003% from
-      26), and a glass segmented control's track turned darker and flatter on 4 captures (1.6-2.3%, against
-      both its earlier capture and 26), with 10 scrolled lists moving a thin band by up to 0.047%. **The second
-      pass was a theory that did not hold**: that the glass had been recorded before its backdrop. With it the
-      glass and the lists came out byte for byte as with one pass. So the redraw makes those captures the same
-      on every run, which the screen as it happened to be did not, and which of the two pictures that glass
-      should be is open: nothing on a device re-records every layer at once. **On 26 and 27 it changes nothing**:
-      a full run of each came out byte for byte as before the redraw existed, the glass and the lists included,
-      so the darker track is 24's alone, the one level that captures by screenshot rather than PixelCopy. Three
-      levels agreeing against one points at the harness on 24, and the capture looks wrong by eye too; the
-      cause is not found. 31+ goes through `captureToImage()`'s own redraw, which invalidates the root only.
+      26), 4 other captures drawn from a recorded layer changed by 1.6-2.3% (against both their earlier
+      capture and 26), and 10 scrolled lists moved a thin band by up to 0.047%. **The second pass was a
+      theory that did not hold**: that one layer had been recorded before the one it draws from. With it
+      those captures came out byte for byte as with one pass. So the redraw makes them the same on every
+      run, which the screen as it happened to be did not, and which of the two pictures is the device's own
+      is open: nothing on a device re-records every layer at once. **On 26 and 27 it changes nothing**: a
+      full run of each came out byte for byte as before the redraw existed, so the change is 24's alone, the
+      one level that captures by screenshot rather than PixelCopy. Other levels agreeing does not settle it:
+      what a consumer's component draws on these levels can be wrong on all of them. 31+ goes through
+      `captureToImage()`'s own redraw, which invalidates the root only.
     - **`coverSystemBars` takes the system's pixels out of a dialog's capture, and its first shape invented
       some.** It extended the row next to each bar, on every level, so a pinned button reaching the
       navigation bar grew a block of its own colour below it, on all levels and not in the JVM golden, which
@@ -939,7 +939,7 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       than 28!"); see `captureDialog` above for what happens instead.
     - **The renderer is `android.testoptions.manageddevices.emulator.gpu`, and it matters.** AGP's default
       `auto-no-window` is rejected by the emulator, which falls back to `auto`, here llvmpipe. Fixtures with
-      AGSL glass crash qemu (0xC0000005) on a software renderer: on fresh boots, 5 of 8 survived on
+      AGSL shaders crash qemu (0xC0000005) on a software renderer: on fresh boots, 5 of 8 survived on
       `swiftshader_indirect`, 5 of 8 on `auto`, 8 of 8 on `host`. Not caused by reusing the Activity (one
       per fixture crashed too, 2 of 5 survived) and not a race (200 ms pauses between fixtures: 3 of 10
       died). `host` then took all three levels through the 876 fixtures. The plugin says so at

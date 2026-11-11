@@ -183,10 +183,10 @@ says which fixture is being captured, which is what to look at when an emulator 
   background behind it instead of transparency.
 - Below 28, before each capture every Compose layer of the window is recorded again, twice, with a frame
   drawn after each pass (`invalidateDescendants()`). There a capture copies what is already on screen, and
-  a layer drawn from another layer's recording without being told when it changes (glass over a backdrop)
-  could be left a frame behind and stay there. Measured on 26 and 27, the redraw changed no pixel of any
-  capture. On 24 it changed one kind of glass (a segmented control drawn over a backdrop), which came out
-  darker than on 26 and 27, and looks like a defect of the capture on 24 rather than of the component.
+  a layer drawn from another layer's recording without being told when it changes could be left a frame
+  behind and stay there. On 26 and 27 the redraw changed no pixel of any capture; on 24, the one level
+  captured by screenshot, it changed some layers drawn that way, and which of the two pictures is the
+  device's own is not known.
 - A `Dialog` is captured on its own, as on the JVM, and a full-screen one (a bottom sheet) comes out the
   same on every level: what the dialog's window drew, its scrim still translucent, nothing from behind it.
   `captureToImage()` does this from 28, PixelCopy of the dialog's window on 26 and 27, and on 24 and 25
