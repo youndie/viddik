@@ -43,3 +43,6 @@ include(":viddik-processor")
 include(":viddik-testing-core")
 include(":viddik-showroom")
 include(":viddik-gradle-plugin")
+// The Android matrix: opt-in through its own plugin id, and nothing above depends on either module.
+include(":viddik-android-capture")
+include(":viddik-matrix-report")

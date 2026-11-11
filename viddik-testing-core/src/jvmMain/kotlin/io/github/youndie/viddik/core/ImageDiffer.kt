@@ -13,8 +13,8 @@ public const val DEFAULT_TOLERANCE_PERCENT: Double = 0.05
 // Lossless image codecs (e.g. WebP VP8L) are decoded by different native Skia/libwebp builds per
 // platform (macOS vs Linux). Both decode results are valid, but intermediate color-transform/prediction
 // math can round by ±1 per channel between builds — invisible to the eye, but enough to blow a detailed
-// image (e.g. a card skin background) past a pixel-exact comparison. See Cards/CorporateCardLarge and
-// Cards/CorporateCardSmall, which showed ~12-17% "mismatch" that was 100% off-by-one noise on every channel.
+// image (e.g. a card skin background) past a pixel-exact comparison. Two such fixtures, measured, showed
+// ~12-17% "mismatch" that was 100% off-by-one noise on every channel.
 public const val DEFAULT_CHANNEL_TOLERANCE: Int = 2
 
 // A percentage alone is unfair to small fixtures: the same handful of glyph-outline quantization

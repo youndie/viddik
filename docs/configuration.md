@@ -91,10 +91,10 @@ captured frame as `NoSuchMethodError` or `IllegalAccessError`.
 
 | viddik | Compose Multiplatform | Kotlin |
 |---|---|---|
-| 0.2 – 0.7 | 1.12 | 2.4 |
+| 0.2 – 0.8 | 1.12 | 2.4 |
 | 0.1 | 1.11 | 2.4 |
 
-viddik 0.7 needs JDK 21 to build against: the artifacts and the plugin are published for it, and an
+viddik 0.7 and later need JDK 21 to build against: the artifacts and the plugin are published for it, and an
 older toolchain fails resolution with "No matching variant". An Android consumer of
 `viddik-annotations` needs `compileSdk = 37`, which Compose Multiplatform 1.12 requires of everything
 that depends on it. Which version brought which feature is in the

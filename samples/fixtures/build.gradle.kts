@@ -5,6 +5,10 @@ plugins {
     id("com.android.kotlin.multiplatform.library")
     id("com.google.devtools.ksp")
     id("io.github.youndie.viddik")
+    // The Android matrix, on the same commonMain registry: `:fixtures:viddikAndroidMatrix` captures
+    // these fixtures on an emulator per API level. Nothing in the CI jobs above runs it — it boots
+    // emulators — and `viddikRecord`/`viddikVerify` are untouched by it.
+    id("io.github.youndie.viddik.android-matrix")
 }
 
 // Read from the main build's gradle.properties, which is the one place the version is stated. The
@@ -72,7 +76,7 @@ kotlin {
 viddik {
     showroomTargets = true
     verifyOnCheck = true
-    // Nine fixtures are far too few for two forks to pay for themselves, and the default would
+    // Thirteen fixtures are far too few for two forks to pay for themselves, and the default would
     // normally be worth turning off here. It is left on because this build is the only place the
     // plugin's own code generator runs, so this is where a sharded run — and now the default
     // itself — gets exercised on every pull request.

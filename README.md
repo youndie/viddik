@@ -91,6 +91,8 @@ caught and the cross-OS goldens still pass ([how a comparison decides](docs/port
   Android or iOS app. [docs/showroom.md](docs/showroom.md)
 - **Design parity** — how far each fixture is from the PNG exported from its design.
   [docs/design-parity.md](docs/design-parity.md)
+- **The Android matrix** — opt-in, through a plugin id of its own: the same fixtures captured on
+  emulators of several API levels, and one page comparing the levels. [docs/android-matrix.md](docs/android-matrix.md)
 
 API reference: [youndie.github.io/viddik](https://youndie.github.io/viddik/). Release notes:
 [GitHub releases](https://github.com/youndie/viddik/releases).
