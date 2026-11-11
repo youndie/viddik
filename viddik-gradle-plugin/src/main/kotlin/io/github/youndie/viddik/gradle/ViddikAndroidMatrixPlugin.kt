@@ -189,6 +189,20 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
                 // The captures are on the emulators until a run pulls them back, so there is nothing
                 // here an up-to-date check could look at.
                 task.outputs.upToDateWhen { false }
+                // Gradle says of a JavaExec that fails only "Process ... finished with non-zero exit value 1",
+                // and the reason is in the console above it. The report writes the reason down, and the task
+                // fails with it.
+                task.isIgnoreExitValue = true
+                val failure = reportDir.map { it.file(REPORT_FAILURE_FILE) }
+                task.doLast { done ->
+                    val exit = (done as JavaExec).executionResult.get().exitValue
+                    if (exit != 0) {
+                        val file = failure.get().asFile
+                        val reason =
+                            if (file.isFile) file.readText() else "the report generator exited with $exit; see above."
+                        throw GradleException("viddik matrix: $reason")
+                    }
+                }
             }
 
         target.tasks.register(MATRIX_TASK) { task ->
@@ -433,6 +447,9 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
         const val EXTENSION_NAME = "viddikAndroidMatrix"
         const val MATRIX_TASK = "viddikAndroidMatrix"
         const val REPORT_TASK = "viddikAndroidMatrixReport"
+
+        /** Has to match what viddik-matrix-report writes; the two modules share no code. */
+        const val REPORT_FAILURE_FILE = "failure.txt"
         const val GENERATE_TASK = "viddikGenerateAndroidMatrixTest"
         const val API_LEVELS_PROPERTY = "viddikMatrix.apiLevels"
         const val DEVICE_PROPERTY = "viddikMatrix.device"

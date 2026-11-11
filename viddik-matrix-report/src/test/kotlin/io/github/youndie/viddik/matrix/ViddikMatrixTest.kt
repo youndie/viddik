@@ -103,7 +103,7 @@ class ViddikMatrixTest {
         assertTrue("api31/diff/A.png" in html)
         assertTrue("API 36 · reference" in html)
         val json = File(out, "summary.json").readText()
-        assertTrue("\"reference\": 36" in json)
+        assertTrue("\"references\": [\"api36\"]" in json, json)
         assertTrue("\"diverging\": 1" in json)
     }
 
@@ -416,6 +416,48 @@ class ViddikMatrixTest {
         val matrix = buildMatrix(listOf(File(root, "pulled")))
 
         assertTrue(matrix.notes.any { it.startsWith("API 31 captured more than a day") }, matrix.notes.toString())
+    }
+
+    @Test
+    fun `a level whose latest run pulled nothing says its column is an earlier run's, however recent`() {
+        val kept = device(31)
+        kept.png("A.png")
+        device(36).png("A.png")
+        val capturedAt = File(kept, "device.json").lastModified()
+        // Where the keep task leaves it: the level's directory, above the capture.
+        File(kept.parentFile, PULLED_NOTHING_MARKER).writeText((capturedAt + 60_000L).toString())
+
+        val matrix = buildMatrix(listOf(File(root, "pulled")))
+
+        val api31 = matrix.devices.first { it.sdkInt == 31 }
+        assertEquals(capturedAt + 60_000L, api31.pulledNothingAt)
+        assertEquals(null, matrix.devices.first { it.sdkInt == 36 }.pulledNothingAt)
+        assertTrue(matrix.notes.single().startsWith("API 31: its latest run"), matrix.notes.toString())
+        writeReport(matrix, File(root, "report"))
+        assertTrue("an earlier run's: the run at" in File(root, "report/index.html").readText())
+        assertTrue("\"pulledNothingAt\": ${capturedAt + 60_000L}" in File(root, "report/summary.json").readText())
+    }
+
+    @Test
+    fun `a capture newer than the note is this run's, and the note is ignored`() {
+        val kept = device(31)
+        kept.png("A.png")
+        File(kept.parentFile, PULLED_NOTHING_MARKER)
+            .writeText((File(kept, "device.json").lastModified() - 60_000L).toString())
+
+        assertEquals(null, buildMatrix(listOf(File(root, "pulled"))).devices.single().pulledNothingAt)
+    }
+
+    @Test
+    fun `the summary names a reference per profile, not one for the page`() {
+        profile(36, 3.0f).png("A.png", width = 120)
+        profile(27, 2.625f).png("A.png", width = 105)
+
+        writeReport(buildMatrix(listOf(File(root, "pulled")), referenceSdk = 36), File(root, "report"))
+
+        val json = File(root, "report/summary.json").readText()
+        assertTrue("\"references\": [\"api27\", \"api36\"]" in json, json)
+        assertFalse("\"reference\": 36" in json, json)
     }
 
     @Test

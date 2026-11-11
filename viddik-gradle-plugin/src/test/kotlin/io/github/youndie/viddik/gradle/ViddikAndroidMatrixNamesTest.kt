@@ -121,6 +121,30 @@ class ViddikAndroidMatrixNamesTest {
     }
 
     @Test
+    fun `an empty pull is put on the level the capture named in logcat`() {
+        val root = createTempDirectory("viddik-logcat").toFile()
+        try {
+            val results = root.resolve("results/connected/debug/emulator-5554")
+            results.mkdirs()
+            results.resolve("logcat-io.github.x.MatrixTest-captureAll.txt").writeText(
+                "11-11 10:00:00.000 I viddik  : Capturing on API 27\n" +
+                    "11-11 10:00:00.001 I viddik  : Captures go to /storage/emulated/0/Android/data/p/files/test_data/viddik\n",
+            )
+
+            assertEquals(27, levelInLogcat(root.resolve("results")))
+            assertEquals(
+                "/storage/emulated/0/Android/data/p/files/test_data/viddik",
+                whereCapturesWent(root.resolve("results")),
+            )
+            markPulledNothing(root.resolve("kept/api27"))
+            assertTrue(root.resolve("kept/api27/$PULLED_NOTHING_MARKER").isFile)
+            assertNull(levelInLogcat(root.resolve("nothing")))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `a keep task's name carries its level`() {
         assertEquals(34, keepLevel(keepTaskName(34)))
         assertNull(keepLevel("viddikKeepConnectedCaptures"))

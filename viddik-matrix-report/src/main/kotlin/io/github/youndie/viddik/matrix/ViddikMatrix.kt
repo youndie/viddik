@@ -3,6 +3,9 @@ package io.github.youndie.viddik.matrix
 import io.github.youndie.viddik.core.ImageDiffer
 import java.awt.image.BufferedImage
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.imageio.ImageIO
 
 /** One emulator's worth of captures: the directory `viddik-android-capture` filled on it. */
@@ -14,6 +17,11 @@ public class MatrixDevice(
     public val density: Float,
     /** When this capture reached this machine, which is what says that a column is an earlier run's. */
     public val capturedAt: Long = 0L,
+    /**
+     * When a later run of this level pulled nothing back, or null. The column then shows what the run before
+     * it left, however recent, and says so: the day-old threshold alone hid exactly this case.
+     */
+    public val pulledNothingAt: Long? = null,
 ) {
     /** What a column is called. The model is there for the day two devices share an API level. */
     public val label: String get() = "API $sdkInt"
@@ -187,6 +195,7 @@ public fun buildMatrix(
             }.toMap()
     notes += profileNotes(devices, references)
     notes += staleNotes(devices)
+    notes += pulledNothingNotes(devices)
 
     // What each device said it would capture, when it said so: a name in that list with no PNG is a
     // capture that failed or never made it back, and a PNG not in it is a leftover from an earlier run
@@ -287,6 +296,19 @@ private fun staleNotes(devices: List<MatrixDevice>): List<String> {
 
 private const val STALE_AFTER_MS = 24 * 60 * 60 * 1000L
 
+/** Names the columns whose latest run pulled nothing, so an earlier run's captures are not read as this one's. */
+private fun pulledNothingNotes(devices: List<MatrixDevice>): List<String> =
+    devices.filter { it.pulledNothingAt != null }.map {
+        "${it.label}: its latest run (${timeOf(it.pulledNothingAt!!)}) pulled nothing back, so this column is an " +
+            "earlier run's, captured ${timeOf(it.capturedAt)}. Run that level again."
+    }
+
+internal fun timeOf(millis: Long): String =
+    DateTimeFormatter
+        .ofPattern("yyyy-MM-dd HH:mm")
+        .withZone(ZoneId.systemDefault())
+        .format(Instant.ofEpochMilli(millis))
+
 internal const val NOT_LISTED_REASON = "that level's run did not have this fixture: it was filtered, or is older"
 
 /**
@@ -336,14 +358,16 @@ internal fun read(file: File): BufferedImage = ImageIO.read(file) ?: error("${fi
 internal const val DEVICE_FILE = "device.json"
 
 /**
- * Where to look when a level produced nothing. Both causes were seen: an emulator left running by an
- * interrupted run stays attached to adb and takes the next run's tests, and a device test that Gradle
- * judged up to date ran nothing and pulled nothing (the plugin now forbids that, but a build that
- * configures the tasks itself can bring it back).
+ * Where to look when a level produced nothing, most likely cause first. The commonest is that the level was
+ * not run since its kept directory was last cleared (by `clean`, or because it never was), which is not a
+ * fault at all. Two faults were seen too: an emulator left running by an interrupted run stays attached to
+ * adb and takes the next run's tests, and a device test that Gradle judged up to date ran nothing and pulled
+ * nothing (the plugin now forbids that, but a build that configures the tasks itself can bring it back).
  */
 internal const val MISSING_LEVEL_HINT: String =
-    "Check that level's device test report, and `adb devices` for an emulator left running by an " +
-        "interrupted run, which takes the next run's tests."
+    "If that level was not run since the last `clean`, run it (viddikApi<N>AndroidDeviceTest, or " +
+        "connectedAndroidDeviceTest below 29). If it was, check its device test report, and `adb devices` for " +
+        "an emulator left running by an interrupted run, which takes the next run's tests."
 
 /** The API levels in [requested] no device reported, with the hint above, or null when none is missing. */
 public fun missingLevelsWarning(
@@ -380,5 +404,24 @@ internal fun readDevice(file: File): MatrixDevice {
         model = string("model"),
         density = number("density").toFloat(),
         capturedAt = file.lastModified(),
+        pulledNothingAt = pulledNothingAt(file.parentFile),
     )
 }
+
+/**
+ * The note the plugin's keep tasks leave in a level's kept directory (`api<N>/`) when its latest run pulled
+ * nothing. The capture can sit a few directories below that (a connected run keeps AGP's layout), so the note
+ * is looked for in the capture's own directory and above it, as far as the kept directory.
+ */
+private fun pulledNothingAt(dir: File): Long? =
+    generateSequence(dir) { it.parentFile }
+        .takeWhile { it.parentFile != null }
+        .take(PULLED_NOTHING_SEARCH_DEPTH)
+        .map { File(it, PULLED_NOTHING_MARKER) }
+        .firstOrNull { it.isFile }
+        ?.let { it.readText().trim().toLongOrNull() ?: it.lastModified() }
+        ?.takeIf { it >= File(dir, DEVICE_FILE).lastModified() }
+
+/** Has to match what the plugin's keep tasks write; the two modules share no code. */
+internal const val PULLED_NOTHING_MARKER = "pulled-nothing-at"
+private const val PULLED_NOTHING_SEARCH_DEPTH = 8

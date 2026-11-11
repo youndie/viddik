@@ -2,9 +2,6 @@ package io.github.youndie.viddik.matrix
 
 import io.github.youndie.viddik.core.ImageDiffer
 import java.io.File
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.imageio.ImageIO
 import kotlin.system.exitProcess
@@ -113,6 +110,9 @@ public fun missingCapturesMessage(matrix: Matrix): String? {
 
 private const val MISSING_NAMED = 10
 
+/** Has to match what the plugin's report task reads back; the two modules share no code. */
+internal const val FAILURE_FILE = "failure.txt"
+
 /**
  * `--input <dir>` (repeatable), `--output <dir>`, `--reference-api <n>` and `--api <n,n,…>` (both
  * optional).
@@ -159,7 +159,15 @@ public fun main(args: Array<String>) {
     columnLines(matrix).forEach(::println)
     val lost = listOfNotNull(missingLevels, missingCapturesMessage(matrix))
     lost.forEach { System.err.println(it) }
-    if (lost.isNotEmpty()) exitProcess(1)
+    // Gradle reports a JavaExec that exits non-zero as nothing but its exit value, so the reason goes in a file
+    // the task reads back and throws with.
+    val failure = File(out, FAILURE_FILE)
+    if (lost.isEmpty()) {
+        failure.delete()
+    } else {
+        failure.writeText(lost.joinToString("\n"))
+        exitProcess(1)
+    }
 }
 
 private fun html(matrix: Matrix): String =
@@ -299,11 +307,8 @@ private fun describe(
     }
 
 private fun capturedOn(device: MatrixDevice): String =
-    "captured " +
-        DateTimeFormatter
-            .ofPattern("yyyy-MM-dd HH:mm")
-            .withZone(ZoneId.systemDefault())
-            .format(Instant.ofEpochMilli(device.capturedAt))
+    "captured ${timeOf(device.capturedAt)}" +
+        (device.pulledNothingAt?.let { ", an earlier run's: the run at ${timeOf(it)} pulled nothing" } ?: "")
 
 private fun percent(value: Double): String = "%.2f%%".format(Locale.ROOT, value)
 
@@ -313,7 +318,10 @@ private fun String.escape(): String =
 private fun json(matrix: Matrix): String =
     buildString {
         append("{\n")
-        append("  \"reference\": ${matrix.reference.sdkInt},\n")
+        // One reference per density: a page of two profiles has two, and one number here named only one of
+        // them. Each device's own "reference" below says which applies to it.
+        val references = matrix.devices.map { matrix.referenceFor(it) }.distinct()
+        append("  \"references\": [${references.joinToString { it.slug.quoted() }}],\n")
         append("  \"devices\": [")
         append(
             matrix.devices.joinToString(", ") {
@@ -321,6 +329,7 @@ private fun json(matrix: Matrix): String =
                 "{\"slug\": ${it.slug.quoted()}, \"sdkInt\": ${it.sdkInt}, \"release\": ${it.release.quoted()}, " +
                     "\"model\": ${it.model.quoted()}, \"density\": ${it.density}, " +
                     "\"reference\": ${matrix.referenceFor(it).slug.quoted()}, \"capturedAt\": ${it.capturedAt}, " +
+                    "\"pulledNothingAt\": ${it.pulledNothingAt ?: "null"}, " +
                     "\"captured\": ${cells.count { cell -> cell.status != CellStatus.MISSING }}, " +
                     "\"refused\": ${cells.count { cell -> cell.refused }}, " +
                     "\"lost\": ${cells.count { cell -> cell.lost }}, " +

@@ -773,8 +773,11 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       pass was a theory that did not hold**: that the glass had been recorded before its backdrop. With it the
       glass and the lists came out byte for byte as with one pass. So the redraw makes those captures the same
       on every run, which the screen as it happened to be did not, and which of the two pictures that glass
-      should be is open: nothing on a device re-records every layer at once. API 26/27 have not been run with
-      it yet, and 31+ goes through `captureToImage()`'s own redraw, which invalidates the root only.
+      should be is open: nothing on a device re-records every layer at once. **On 26 and 27 it changes nothing**:
+      a full run of each came out byte for byte as before the redraw existed, the glass and the lists included,
+      so the darker track is 24's alone, the one level that captures by screenshot rather than PixelCopy. Three
+      levels agreeing against one points at the harness on 24, and the capture looks wrong by eye too; the
+      cause is not found. 31+ goes through `captureToImage()`'s own redraw, which invalidates the root only.
     - **`coverSystemBars` takes the system's pixels out of a dialog's capture, and its first shape invented
       some.** It extended the row next to each bar, on every level, so a pinned button reaching the
       navigation bar grew a block of its own colour below it, on all levels and not in the JVM golden, which
@@ -817,12 +820,19 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       written to `…/files/test_data/viddik`, the directory AGP passed, the row was there before and after, and
       AGP did not start pulling at all: 7 s from the end of the test to the end of the build, against 74-88 s
       for a run that pulls 658 files. Neither run had `--info`, which is where AGP says what it pulls. Two boots
-      of the samples with no pause did not repeat it.
+      of the samples with no pause did not repeat it. A third case, on API 27, broke both tells: the plugin had
+      just inserted the MediaStore row, and the end of the test to the end of the build took 12 s against 15 s for
+      the retry that pulled everything. All three empty pulls came right after a run of another level on the same
+      serial, but so did a 27 that pulled fine. What is left to look at is an `--info` log of the next one.
       A rescue from here is impossible, because AGP has uninstalled the test APK by then and the captures went
       with it. So `viddikKeepConnectedCaptures` fails the build when the results have a `captureAll` and nothing
       came back, quoting where logcat says the captures went and reading it (`emptyPullExplanation`):
       `…/files/viddik` is the fallback, `…/files/test_data/viddik` means AGP passed the directory and then did
-      not pull it, which the first version of the message still blamed on MediaStore. Without a `captureAll` it only warns, since a module's own device tests run through the same
+      not pull it, which the first version of the message still blamed on MediaStore. The level comes from a
+      `Capturing on API <n>` line the capture logs for exactly this, since no `device.json` came back, and the
+      task leaves an empty `pulled-nothing-at` in that level's kept directory (the managed keeper does the same):
+      the column still shows the run before, and the page says so whatever its age, which the day-old note
+      alone did not. A successful keep replaces the directory, note and all. Without a `captureAll` it only warns, since a module's own device tests run through the same
       task and need not capture anything. The MediaStore query's spaces are backslash-escaped because a double
       quote does not survive the way through `ExecOperations` to adb on Windows: the query failed, and every
       emulator looked unindexed.
@@ -840,7 +850,9 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       counted as lost too: a fixture missing from that level's own `fixtures.txt` is now a third count.
   - `viddik-matrix-report` (plain JVM) walks for `device.json`, compares every column with the
     reference through `ImageDiffer` at default thresholds, writes `build/reports/viddik-matrix/`.
-    Run by `viddikAndroidMatrixReport` (`JavaExec` over a resolvable configuration). Both halves of how it
+    Run by `viddikAndroidMatrixReport` (`JavaExec` over a resolvable configuration, `isIgnoreExitValue` with a
+    `doLast` that throws what the report wrote to `failure.txt`: Gradle reports a failed `JavaExec` as its exit
+    value and nothing else). Both halves of how it
     is attached were paid for, by a run that failed on one level with another already pulled and wrote no
     page: it finalizes every `viddikApi<N>` task and not just the group, which never starts once a level
     has failed; and it is **not** a dependency of `viddikAndroidMatrix`, because Gradle cancels a task

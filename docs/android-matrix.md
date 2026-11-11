@@ -14,12 +14,15 @@ and the page shows where and by how much. It fails only when a capture did not c
 
 ```kotlin
 plugins {
-    id("io.github.youndie.viddik")
-    id("io.github.youndie.viddik.android-matrix")
+    id("io.github.youndie.viddik") version "<VERSION>"
+    id("io.github.youndie.viddik.android-matrix") version "<VERSION>"
 }
 
 viddik { showroomTargets = true }
 ```
+
+Both ids are in one artifact, so give them the same version: Gradle loads that artifact once, and with two
+versions one of them decides for both. A version catalog makes that one line.
 
 ```bash
 ./gradlew :yourModule:viddikAndroidMatrix                            # → build/reports/viddik-matrix/index.html
@@ -181,8 +184,9 @@ says which fixture is being captured, which is what to look at when an emulator 
 - Below 28, before each capture every Compose layer of the window is recorded again, twice, with a frame
   drawn after each pass (`invalidateDescendants()`). There a capture copies what is already on screen, and
   a layer drawn from another layer's recording without being told when it changes (glass over a backdrop)
-  could be left a frame behind and stay there. Glass of that kind can come out darker than on 31 and above
-  because of it.
+  could be left a frame behind and stay there. Measured on 26 and 27, the redraw changed no pixel of any
+  capture. On 24 it changed one kind of glass (a segmented control drawn over a backdrop), which came out
+  darker than on 26 and 27, and looks like a defect of the capture on 24 rather than of the component.
 - A `Dialog` is captured on its own, as on the JVM, and a full-screen one (a bottom sheet) comes out the
   same on every level: what the dialog's window drew, its scrim still translucent, nothing from behind it.
   `captureToImage()` does this from 28, PixelCopy of the dialog's window on 26 and 27, and on 24 and 25
@@ -235,7 +239,13 @@ its own density. Nothing on the page compares one profile with another.
 
 The page also says when a level has two columns, because two profiles reached it (a managed run and a
 connected one, say), and when a column was captured more than a day before the newest one, which is usually
-a level nobody ran again. Each column's header has the time of its capture.
+a level nobody ran again. Each column's header has the time of its capture. When a level's latest run pulled
+nothing back, its column is what the run before left, and the header and a note at the top say so whatever
+its age. `summary.json` lists the reference of each profile (`references`) and gives every device its own.
+
+When captures are missing, `viddikAndroidMatrixReport` fails after writing the page, with the counts in the
+failure: a fixture too large for the device stays refused on every run, so a suite with one keeps the task
+red until the fixture or the `device` changes.
 
 ## Compose resources
 

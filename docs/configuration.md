@@ -47,6 +47,27 @@ platform-suffixed artifacts (`viddik-annotations-desktop`, `viddik-testing-core-
 can't resolve a multiplatform variant. Get one of those wrong by hand and nothing errors — KSP just
 reports `SKIPPED` and the screenshot task passes with no tests in it.
 
+### Trying a snapshot
+
+Every change on `main` is published before it is released, to `https://reposilite.kotlin.website/snapshots`
+(read is anonymous). A snapshot's version is the next release's with a build number after it: `0.8.0.61`
+is build 61 on the way to `0.8.0`. Like Central, the repository goes in **both** settings blocks:
+
+```kotlin
+// settings.gradle.kts, in pluginManagement { repositories { } } and dependencyResolutionManagement { repositories { } }
+maven {
+    url = uri("https://reposilite.kotlin.website/snapshots")
+    content { includeGroupByRegex("io\\.github\\.youndie\\.viddik.*") }
+}
+```
+
+A filter by group needs the regex, or one `includeGroup` per group: a plugin's marker sits in a group named
+after its id, so the Android matrix's is `io.github.youndie.viddik.android-matrix`, which
+`includeGroup("io.github.youndie.viddik")` does not cover.
+
+A snapshot sorts above the release it leads to (`0.8.0.61` > `0.8.0`), so a build on one is not offered that
+release as an upgrade: going back to Central is a hand edit of the version.
+
 ## Options
 
 Every option has a default derived from the module; set only what you need.

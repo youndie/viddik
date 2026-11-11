@@ -47,9 +47,10 @@ public abstract class ViddikKeepManagedCapturesTask : DefaultTask() {
                 ?.lastModified() ?: 0L
         val api = level.get()
         if (!keepManagedCapture(pulled.files.toList(), api, since, kept.get().asFile)) {
+            markPulledNothing(kept.get().asFile.resolve("api$api"))
             logger.warn(
                 "viddik matrix: API $api's run pulled no captures back. The report keeps what an earlier run of " +
-                    "it left, if anything, and says how old that is.",
+                    "it left, if anything, and marks that column as an earlier run's.",
             )
         }
     }

@@ -654,6 +654,9 @@ public object ViddikAndroidCapture {
                 Log.w(LOG_TAG, "No $OUTPUT_DIR_ARGUMENT argument: captures go to $fallback and will not be pulled back")
                 fallback
             }
+        // Both lines are read back on the host from the logcat AGP keeps (ViddikKeepConnectedCapturesTask):
+        // when a run pulls nothing, they are all that says where the captures went and which level lost them.
+        Log.i(LOG_TAG, "Capturing on API ${Build.VERSION.SDK_INT}")
         return File(root, MATRIX_SUBDIR).apply { mkdirs() }.also { Log.i(LOG_TAG, "Captures go to $it") }
     }
 
