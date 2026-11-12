@@ -77,7 +77,7 @@ signal working, not a flake.
 While iterating on viddik itself, downstream consumers resolve `io.github.youndie.viddik:viddik-*` via
 `mavenLocal()` — after any change here, `publishToMavenLocal` before rebuilding them (the other two
 sources, Central and `wip`, are under "Consumers"). Versions are bumped by hand in `gradle.properties`
-(plain `version`, currently `0.8.0` — the head names the next release, see "Publishing");
+(plain `version`, currently `0.8.1` — the head names the next release, see "Publishing");
 Gradle/consumers cache by exact version+build hash so a republish under the same version is picked up
 by build cache invalidation, not by version diffing — if a consumer's build looks stale after a
 republish, `--no-build-cache` or bump the version.
@@ -1314,15 +1314,15 @@ at `https://reposilite.kotlin.website/snapshots`. `REPOSILITE_USER` / `REPOSILIT
 Gradle properties; CI passes them as `ORG_GRADLE_PROJECT_*` environment variables, which Gradle maps
 to properties on its own.
 
-**The version is the plain `version` key** in `gradle.properties` (`0.8.0`) — `viddik.version` was one
+**The version is the plain `version` key** in `gradle.properties` (`0.8.1`) — `viddik.version` was one
 more name for the same thing — and `-PVERSION` wins over it when given. That is the whole difference
 between the three channels:
 
 | | version | how |
 |---|---|---|
-| `wip` snapshots | `0.8.0.<run number>` | push to `main`, `publish-viddik-snapshot.yaml` (`determine-version`) |
-| Maven Central | `0.7.0`, the last release | dispatch `central.yaml` in `youndie/sborka`, version given there |
-| `~/.m2` | `0.8.0` | `./gradlew publishToMavenLocal`, no credentials |
+| `wip` snapshots | `0.8.1.<run number>` | push to `main`, `publish-viddik-snapshot.yaml` (`determine-version`) |
+| Maven Central | `0.8.0`, the last release | dispatch `central.yaml` in `youndie/sborka`, version given there |
+| `~/.m2` | `0.8.1` | `./gradlew publishToMavenLocal`, no credentials |
 
 **The head names the next release, not the last one.** In Maven's ordering (and Renovate's) `X.Y.Z.N`
 sorts *above* `X.Y.Z`, so a head left on a released number publishes builds that rank above the
@@ -1344,7 +1344,7 @@ plainly: the run appears in sborka's Actions tab rather than in this repository'
 
 ```bash
 gh workflow run central.yaml --repo youndie/sborka \
-  -f repository=youndie/viddik -f ref=main -f version=0.8.0 \
+  -f repository=youndie/viddik -f ref=main -f version=0.8.1 \
   -f runner=ubuntu-latest -f konan-cache=true -f gate=true
 ```
 
@@ -1359,6 +1359,13 @@ Somebody then reads the bundle at https://central.sonatype.com/publishing/deploy
 Publish: nothing is resolvable before that click and nothing can be changed after it, because a
 version on Central can never be rewritten or taken back. The tag goes on the tree the bundle was built
 from, once it is published — `v0.4.0` was placed that way, after the fact.
+
+**A deployment can fail on signatures it does not have a problem with.** The 0.8.0 bundle came back
+`FAILED` with "Could not find a public key by the key fingerprint" on some components and validated on
+others, all signed by the one key (`…7C0F39E6788CAF49`) that had signed 0.7.0. The key is on
+`keyserver.ubuntu.com` and not on `keys.openpgp.org`, so a lookup Central loses there fails the check.
+Dropping the deployment and uploading again went through. Publishing the key to `keys.openpgp.org` as
+well is what would make it not depend on one server.
 
 Dokka (`org.jetbrains.dokka`, aggregated at root via `dependencies { dokka(projects.viddikAnnotations); ... }`)
 is applied per module through the version catalog; ktlint arrives with `sborka.lint`, which pins the
@@ -1376,7 +1383,7 @@ one a given consumer is wired for is in its own `settings.gradle.kts`:
   which does not look at Central unless told to) and `google()` beside the second, for the
   `androidx.*` artifacts Compose Multiplatform's desktop variants pull in.
 - **`wip`** (`https://reposilite.kotlin.website/snapshots`, read is anonymous) — every push to `main`
-  as `<head>.<run number>` (`0.8.0.<run number>` now). This is where a version lives while it is
+  as `<head>.<run number>` (`0.8.1.<run number>` now). This is where a version lives while it is
   being tried out in a consumer before it is worth a release. Such a build sorts above the release of
   the same head, so a consumer on one is not offered that release as an upgrade: moving it to Central
   is a hand edit.
