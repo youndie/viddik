@@ -171,7 +171,7 @@ class ImageDifferTest {
     }
 
     @Test
-    fun `a status dot turning red passes a screen on the share alone and fails it under a budget`() {
+    fun `a status dot turning red passes a screen on the share alone and fails it under the budget`() {
         // #64: 90 px at delta 199 is 0.03% of 360x800, inside the default share, while the same edit
         // is 0.45% of a one-row fixture and fails there. The budget is a count, so the screen fails too.
         val golden = solid(360, 800, OPAQUE_BLACK)
@@ -181,8 +181,8 @@ class ImageDifferTest {
         val result = ImageDiffer.diff(golden, actual)
 
         assertEquals(90, result.pronouncedPixels)
-        assertTrue(result.matches(), "unlimited by default: the comparison as it was")
-        assertFalse(result.matches(pronouncedPixelBudget = 16), "90 pronounced pixels past a budget of 16")
+        assertTrue(result.matches(pronouncedPixelBudget = UNLIMITED_PRONOUNCED_PIXELS), "the share alone takes it")
+        assertFalse(result.matches(), "90 pronounced pixels past the default budget of 16")
     }
 
     @Test

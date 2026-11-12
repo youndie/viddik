@@ -27,12 +27,12 @@ to know it exists, one line in README's list.
 ## Build & Test Commands
 
 ```bash
-./gradlew build                                  # Build all 5 modules, and the whole gate: ktlint, the
+./gradlew build                                  # Build all 9 modules, and the whole gate: ktlint, the
                                                    # goldens, and both unit-test suites
 ./gradlew :viddik-testing-core:jvmTest            # Self-test suite (DemoViddik.kt) — NOT `test`, the
                                                    # module's jvm() target is unnamed so Gradle names the
                                                    # task jvmTest, not test (that only applies to plain
-                                                   # kotlin("jvm") consumer modules like dev:uikit-sandbox)
+                                                   # kotlin("jvm") consumer modules)
 ./gradlew :viddik-testing-core:jvmTest -PsceneReuse=true --tests "*GeneratedViddikTests*"
                                                    # The same goldens through one shared scene (#40).
                                                    # Generated tests only: a shared scene cannot share
@@ -45,12 +45,16 @@ to know it exists, one line in README's list.
                                                    # plugin (RegistryCompileTest, ~20 s) — plain
                                                    # kotlin("jvm"), so `test`, not `jvmTest`
 ./gradlew :viddik-gradle-plugin:test              # ViddikLayoutTest, the naming fork
-./gradlew ktlintCheck                             # Style check (all 5 modules; jvmTest sourceSet in
+./gradlew :viddik-matrix-report:test :viddik-android-capture:testAndroidHostTest
+                                                   # The Android matrix's host-side halves (no emulator)
+./gradlew -p samples :fixtures:viddikAndroidMatrix -PviddikMatrix.apiLevels=34
+                                                   # The matrix end to end on one emulator (needs ANDROID_HOME)
+./gradlew ktlintCheck                             # Style check (all 9 modules; jvmTest sourceSet in
                                                    # viddik-testing-core is deliberately excluded, see
                                                    # its build.gradle.kts — KSP-generated code lives there)
 ./gradlew ktlintFormat                            # Auto-fix style violations
 ./gradlew dokkaGenerate                           # Aggregated HTML docs at build/dokka/html/index.html
-./gradlew publishToMavenLocal                     # Publish all 5 modules for local consumers to pick up
+./gradlew publishToMavenLocal                     # Publish all 9 modules for local consumers to pick up
 ./gradlew :viddik-processor:publishToMavenLocal   # Single module, e.g. after a processor-only change
 VIDDIK_RECORD_MODE=true ./gradlew :viddik-testing-core:jvmTest --tests "*runAllScreenshots*"
                                                    # Re-record the self-test golden PNGs (src/jvmTest/snapshots/).
@@ -73,7 +77,7 @@ signal working, not a flake.
 While iterating on viddik itself, downstream consumers resolve `io.github.youndie.viddik:viddik-*` via
 `mavenLocal()` — after any change here, `publishToMavenLocal` before rebuilding them (the other two
 sources, Central and `wip`, are under "Consumers"). Versions are bumped by hand in `gradle.properties`
-(plain `version`, currently `0.7.1` — the head names the next release, see "Publishing");
+(plain `version`, currently `0.8.0` — the head names the next release, see "Publishing");
 Gradle/consumers cache by exact version+build hash so a republish under the same version is picked up
 by build cache invalidation, not by version diffing — if a consumer's build looks stale after a
 republish, `--no-build-cache` or bump the version.
@@ -338,12 +342,14 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       px at delta 199) that a one-row fixture fails at 0.45%, and since record shares the comparison
       the stale screen golden is kept too — downstream, a shared icon change rewrote 6 of ~30
       screens. `matches` now also requires `pronouncedPixels <= pronouncedPixelBudget` on the share
-      path. **Unlimited by default** (`UNLIMITED_PRONOUNCED_PIXELS`), deliberately: a finite default
-      fails goldens recorded under the old rule on the first verify, which is a minor-version
-      decision, not a patch. A fixture with its own `tolerancePercent` is exempt — `verify`'s
-      default argument — because what it pays for is the filtered-layer residue, which is
-      pronounced. This module's `jvmTest` runs at 16 (`build.gradle.kts`), so the three-OS check is
-      what shows the recommended value holds for real goldens.
+      path. **16 by default from 0.8** (`DEFAULT_PRONOUNCED_PIXEL_BUDGET`), unlimited before
+      (`UNLIMITED_PRONOUNCED_PIXELS`, still the way to turn it off): a finite default fails goldens an
+      edit had already gone past on the first verify after an upgrade, which made it a minor-version
+      decision rather than a patch. 16 is what this module's `jvmTest` ran at on three OSes while the
+      budget was opt-in. A fixture with its own `tolerancePercent` is exempt — `verify`'s default
+      argument — because what it pays for is the filtered-layer residue, which is pronounced. The
+      matrix report's `matches()` takes the default too, so a cell with a small but pronounced
+      difference from its reference is `DIFFERS`, not `SAME`.
   - **Per-fixture tolerance** (0.3.1). `ViddikComponent.tolerancePercent: Double?` carries what
     `@ViddikScreenshot(tolerancePercent = ...)` asked for, and `ViddikEngine.verify` resolves
     component → `viddik.tolerancePercent` system property → `DEFAULT_TOLERANCE_PERCENT` in its own
@@ -692,6 +698,294 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       It is an `@Input` rather than an `onlyIf` so that turning the feature off re-runs the task and
       removes the file, instead of skipping and leaving a test class behind.
 
+- **The Android matrix** (`docs/android-matrix.md`) — opt-in, and strictly beside everything above:
+  nothing in `ViddikPlugin`, `CaptureEngine` or `ViddikEngine` knows it exists.
+  - `ViddikAndroidMatrixPlugin` (id `io.github.youndie.viddik.android-matrix`, same jar) is the only
+    class in the plugin that names an AGP type; AGP's `gradle-api` is `compileOnly`, so a build that
+    applies just `io.github.youndie.viddik` never loads one. It requires `showroomTargets = true` and
+    `com.android.kotlin.multiplatform.library`. Device tests are switched on when the Android target
+    appears (Compose wires its resources into a compilation at creation; one made from `finalizeDsl`
+    gets an unset `copyAndroidDeviceTestComposeResourcesToAndroidAssets` output), or reused if the
+    module already has them — `withDeviceTest` twice is an AGP error, and the device-test compilation
+    is itself the `KotlinMultiplatformAndroidDeviceTest` DSL. Managed devices (`viddikApi<N>`, group
+    `viddikMatrix`) are added in `finalizeDsl`. That copy task also fails in any module with device
+    tests and `androidResources` off, matrix or not (CMP 1.12.1 + AGP 9.4.1), so the plugin disables
+    it there instead of turning resources on.
+  - `viddik-android-capture` (KMP, `android {}` only) runs on the device: `captureToImage()` (on API 24/25, which lack
+    PixelCopy, `UiAutomation.takeScreenshot()` cropped to the node — not a software `View.draw()`, whose
+    raster Skia would make the column differ for the capture's sake) of the
+    fixture box inside `safeDrawingPadding()`, font scale through `DeviceConfigurationOverride`
+    (a real `Configuration`, so 34+'s non-linear scaling applies), PNGs plus `device.json` and
+    `fixtures.txt` into the `additionalTestOutputDir` instrumentation argument. For a managed device on
+    API 29+ AGP does not query anything for it — it passes `/sdcard/Android/media/<pkg>/additional_test_output`
+    — and pulls it back after the run (`Collecting additional test outputs` / `Pulling …` at `--info`).
+    The file-name rule is a copy of `ViddikEngine.fileNameFor` (internal there), pinned by
+    `ViddikMatrixFilesTest`. Each capture logs `Capturing <n>: <group> - <name>` under the `viddik` tag,
+    which is what says how far a run got when its emulator died.
+    - **One test, one Activity, one composition** (`captureAll`, generated by
+      `ViddikGenerateAndroidMatrixTestTask`). A test per fixture started an Activity per fixture: 876
+      fixtures took 25m47s a level, against about 7 minutes now (0.3 s a capture). `key(index)` gives each
+      fixture its own slot table, and `clearStage` empties the stage between two so a dialog's window or a
+      keyboard cannot reach the next capture. A rule shared across tests would not have done it:
+      `AndroidJUnitRunner` finishes every Activity after each test. A fixture that throws costs a fresh
+      Activity and nothing else; the test goes on and fails at the end, and `failures.txt` carries the
+      reason per file for the page.
+    - **Two window settings hold the columns comparable, and both were found as false differences.**
+      `FLAG_NOT_FOCUSABLE`, because the reused window could take focus, which a fresh Activity never had
+      time to: a field asking for focus raised the keyboard and the capture caught the inset animation
+      half way. `enableEdgeToEdge()`, because the platform enforces edge-to-edge only from 35: below it
+      `WindowInsets.navigationBars` read zero, so a bottom sheet padding itself by it sat one bar lower
+      than on 36. Before: 64 fixtures past 5% and 7 past 25%, with 31 and 34 agreeing against 36. After:
+      2 and 0, and what tops the page is an AGSL shader on 31. When two columns agree against a third,
+      suspect the harness first.
+    - **The capture is repeatable.** On the same renderer two complete runs were byte-identical on all
+      811 captures of API 31 and of API 34, and a filtered run gave the same bytes as the full one (18 of
+      18), so what a fixture looks like does not depend on what ran before it.
+    - **A full-screen dialog below 28** used to keep whatever the screen held: 80-95% "different". Three
+      routes now reach the same picture of the dialog's own window (`captureDialog`): `captureToImage()`
+      from 28; `PixelCopy.request(window, …)` on 26/27, with the window's `surfaceInsets` added to the source
+      rectangle by hand, read by reflection (a window with a shadow has a surface larger than itself, and
+      on those two levels the rectangle is in surface coordinates: centred dialogs came out 84 px too
+      far down and right and cut off, 44-59% from 24, and the first test of this, all sheets with no such
+      margin, saw nothing; no rectangle at all scales the whole surface into the bitmap; 0.42% at most now);
+      and on 24/25 two screenshots with the host painted black and then white,
+      from which `pixelFromComposites` recovers the straight ARGB, alpha included: `over black = source`,
+      `white - black = 1 - alpha`. That needs the dialog's dim off and the host's content hidden. It is
+      taken as black, white, black and retried until the blacks agree, because a keyboard rising between
+      two shots came out as a half-transparent sheet in both positions, identically on every run, so
+      repeatability did not catch it; looking at the capture did. Measured on 40 sheets of one profile and
+      renderer: 24 against 26 within 2.7%, two runs of each byte-identical on all 40, and a plain
+      `ModalBottomSheet` on 24 and 27 within 0.46% of 36. What is left against 36 is real as far as it
+      was looked at: taller sheets sit lower (a taller status bar), coloured shadows arrive in 28.
+    - **A fixed 250 ms lost a race below 28**: one sheet of 658 came out on 27 without its pinned button,
+      between two runs that agreed on the rest. `settled` takes a capture until two in a row agree, on
+      the two routes with nothing forcing a redraw: PixelCopy of a dialog on 26/27 and any screenshot on
+      24/25. Two full runs of 27 after that: 658 of 658 byte-identical, which for a one-in-658 race is
+      evidence and not proof.
+    - **It was not a race, or not only one.** The next full run lost the same sheet's pinned button and its
+      scrim on 24 instead, 1 of 658, 10% from 27, with `settled` in place. The sheet draws that pinned block
+      from another layer's recording, on purpose with no invalidation key, so a block a frame behind
+      stays behind: Compose is idle, every frame is the same, and two agreeing captures prove nothing. From 28
+      `captureToImage()` goes through a forced redraw; below it the capture copies the screen as it is. So
+      `redrawLayers()` now calls `ViewRootForTest.invalidateDescendants()`, which re-records every layer, before
+      every screenshot and every PixelCopy below 28, twice, waiting for a drawn frame after each pass
+      (`awaitDraw`, an `OnDrawListener`). Measured on two full API 24 runs: the button came back (0.003% from
+      26), 4 other captures drawn from a recorded layer changed by 1.6-2.3% (against both their earlier
+      capture and 26), and 10 scrolled lists moved a thin band by up to 0.047%. **The second pass was a
+      theory that did not hold**: that one layer had been recorded before the one it draws from. With it
+      those captures came out byte for byte as with one pass. So the redraw makes them the same on every
+      run, which the screen as it happened to be did not, and which of the two pictures is the device's own
+      is open: nothing on a device re-records every layer at once. **On 26 and 27 it changes nothing**: a
+      full run of each came out byte for byte as before the redraw existed, so the change is 24's alone, the
+      one level that captures by screenshot rather than PixelCopy. Other levels agreeing does not settle it:
+      what a consumer's component draws on these levels can be wrong on all of them. 31+ goes through
+      `captureToImage()`'s own redraw, which invalidates the root only.
+    - **`coverSystemBars` takes the system's pixels out of a dialog's capture, and its first shape invented
+      some.** It extended the row next to each bar, on every level, so a pinned button reaching the
+      navigation bar grew a block of its own colour below it, on all levels and not in the JVM golden, which
+      read as a defect in the screen. The bottom band (navigation bar or keyboard, which on 24/25 is
+      otherwise in the picture, half way up) now goes transparent. The top band is only touched on 24/25,
+      where a screenshot has icons and a clock in it. It took the row under it, and that was the second
+      invention: a sheet ending right under the status bar came out with a step above it, as wide as the
+      first row of its rounded top (938 px on a 1080 px screen), 26 of 46 tall sheets on 24, about 2.3% from
+      the same sheet on 26. A status bar is see-through around its icons, and what the two composites recover
+      there is the window's own pixel, so each row now takes the colour most of it already has, and a row
+      with no majority (a picture going under the bar) takes the row under the band. `Surfaces / Tall sheet`
+      in the samples is that shape: 0.032% between 24 and 26 afterwards, the scrim above it identical. A sheet
+      going under the bar loses its corners there, 0.119% on the shape measured.
+    - **Below 28 a window always hands focus to its first focusable view.** `setInTouchMode(true)` was
+      tried, on the theory that an untouched emulator is the cause, and changed nothing, down to the
+      percent. So a sheet with a text field comes up focused on 24, 26 and 27 and not on 31, 34 and 36.
+      The keyboard that follows was left in the picture at first, as a platform difference. It turned out not
+      to be a dependable one: across two full runs of API 24 one form sheet came out lifted by the keyboard
+      once and sitting at the bottom once, 75% of its pixels apart, and the only change between them was the
+      timing `redrawLayers` added to earlier fixtures. So below 28 `keepKeyboardAway` bars the dialog's window
+      from the keyboard (`FLAG_ALT_FOCUSABLE_IM`, which also stops one not yet up), hides one already up and
+      waits it out, before the capture. The field keeps its focus. Measured on a full API 24 run: the six
+      sheets that had the keyboard now sit where 31 and 34 put them, to within 4 dp, and every other capture
+      was byte for byte as before; the focused field's border is the one difference left against 31+, where
+      the field is not focused. `Surfaces / Sheet with a field` in the samples is that shape (24 against 26:
+      0.033%). What was the harness's fault before that: only the sheet's window can dismiss
+      that keyboard, and the host takes no focus, so it outlived the sheet and the next tall fixture "did not
+      fit" a 1436 px safe area. `clearStage` asks through the dialog's window first.
+    - **A filter with a space silently captured nothing.** AGP writes instrumentation arguments into an
+      unquoted `am instrument` line: `Error: Invalid userId -2`, no test run, build green. The plugin
+      form-encodes the value, `selected` decodes it. Patterns are `|`-separated: one substring made a look at a
+      few groups of a large suite a full run.
+    - **A filtered run adds to the level; anything else replaces it** (`keepRuns`, `ViddikKeptRuns.kt`).
+      Replacing was the only rule, and with it a filtered run emptied the rest of the column, so getting a
+      changed group of a few dozen fixtures onto a full page took a full run of every level, 6-16 minutes
+      each on a 658-fixture suite. The capture writes `filter.txt` only when filtered, and the keeper merges
+      such a run into what is kept: its PNGs, its `fixtures.txt` lines and what `failures.txt` /
+      `does-not-fit.txt` say about its fixtures replace the old ones, a fixture it listed and did not capture
+      loses its old PNG rather than keeping a stale one, and `device.json` stays the earlier one's so the
+      column's age is that of the run most of it came from. A capture of another `sdkInt`/`model`/`density`
+      replaces whatever the filter, since two densities are two sizes of every fixture, and so does a kept
+      capture with no `fixtures.txt`, which cannot say which of its files are rows.
+    - **A fixture too large for the device does not fail the test** (`does-not-fit.txt`, the report's
+      `unfit` cells). On a suite with full-height screens about 200 fixtures do not fit the default profile,
+      so every connected run failed, and its exit code said nothing: a run that died on compilation looked
+      exactly like the others, and was read as one. Now only a fixture that
+      threw fails `captureAll`, and the report counts "too large" apart (console, column headers,
+      `summary.json` `tooLarge`/`tooLargeCaptures`, a note on the page) without failing on it. Captures from
+      before this have the reason in `failures.txt` and are still counted as refused.
+    - **A connected run can take every capture and pull none.** AGP asks MediaStore for `/sdcard/Android`
+      before the run, and with no row it passes no `additionalTestOutputDir` at all (seen in the `am instrument`
+      line at `--info`): the capture falls back to its own external files directory, the tests are green, and
+      nothing is pulled. The row is missing right after boot on some levels, and on the API 27 image until it
+      is inserted, which `viddikPrepareConnectedEmulators` now does before the test task, on `emulator-*`
+      serials only. Run without that task, API 27 reproduces the empty pull every time; with it, it pulls.
+      **A separate case is not explained:** the first connected run of API 26 after a boot took 658 captures
+      and pulled none, in two full runs out of two, and the run after it pulled everything. The capture had
+      written to `…/files/test_data/viddik`, the directory AGP passed, the row was there before and after, and
+      AGP did not start pulling at all: 7 s from the end of the test to the end of the build, against 74-88 s
+      for a run that pulls 658 files. Neither run had `--info`, which is where AGP says what it pulls. Two boots
+      of the samples with no pause did not repeat it. A third case, on API 27, broke both tells: the plugin had
+      just inserted the MediaStore row, and the end of the test to the end of the build took 12 s against 15 s for
+      the retry that pulled everything. All three empty pulls came right after a run of another level on the same
+      serial, but so did a 27 that pulled fine. **"The first run after a boot" did not hold either**: later, with a
+      cold boot (`-no-snapshot`) before every run, API 26 pulled nothing in 2 runs of 4, neither of them the
+      first, about 9 s from the end of the test to the end of the build, and the message saying "each time on the
+      first run of a level" had to go. What is left to look at is an `--info` log of the next one.
+      A rescue from here is impossible, because AGP has uninstalled the test APK by then and the captures went
+      with it. So `viddikKeepConnectedCaptures` fails the build when the results have a `captureAll` and nothing
+      came back, quoting where logcat says the captures went and reading it (`emptyPullExplanation`):
+      `…/files/viddik` is the fallback, `…/files/test_data/viddik` means AGP passed the directory and then did
+      not pull it, which the first version of the message still blamed on MediaStore. The level comes from a
+      `Capturing on API <n>` line the capture logs for exactly this, since no `device.json` came back, and the
+      task leaves an empty `pulled-nothing-at` in that level's kept directory (the managed keeper does the same):
+      the column still shows the run before, and the page says so whatever its age, which the day-old note
+      alone did not. A successful keep replaces the directory, note and all. Without a `captureAll` it only warns, since a module's own device tests run through the same
+      task and need not capture anything.
+      **A run that never reached the device** left the old captures unmarked: on a compilation error the test
+      task never runs, so neither did its finalizer. `viddikPrepareConnectedEmulators` now writes
+      `build/viddik-matrix/connected/.pending/` (a `started` stamp and an `api<N>` per emulator, from
+      `getprop ro.build.version.sdk`), every task of the module `mustRunAfter` it so it comes before the
+      compilation, and the keeper finalizes it as well as the test (and `mustRunAfter` the test). Without
+      results newer than the stamp, the pending levels get `pulled-nothing-at` and a warning. The stamp also
+      bounds what is kept: AGP empties its pull directory only when its test starts, and the first version of
+      this, checked by breaking the samples' device-test compilation, re-kept the previous day's API 26 pull
+      as if it were new. A phone has no pending level, so the warning names none. The MediaStore query's spaces are backslash-escaped because a double
+      quote does not survive the way through `ExecOperations` to adb on Windows: the query failed, and every
+      emulator looked unindexed.
+    - **Each connected run clears AGP's output directory**, so after 24, 26 and 27 only 27 reached the page.
+      `viddikKeepConnectedCaptures` finalizes `connectedAndroidDeviceTest` and copies each run out to
+      `build/viddik-matrix/connected/api<N>`, which is what the report reads. Keyed by the level in
+      `device.json` and replaced whole (unless filtered, above), because AGP's directory is named after the serial: a level run again on
+      another port used to leave its earlier run beside the new one. A task of its own with a plain file copy
+      rather than `Copy`: a `Copy` with nothing to copy is `NO-SOURCE`, and the check above would never run.
+    - **`adb pull` loses single files when the host is out of sockets** (`cannot connect to daemon …
+      lacked sufficient buffer space`, again a process on the host holding thousands of them), AGP does not
+      retry, and the test is long over. The report counts these apart from what the device refused (a
+      `no capture` cell with nothing in `failures.txt`), in the console, the column headers and `summary.json`.
+      Both used to be one number the reader had to take apart, and a level whose run was filtered or older was
+      counted as lost too: a fixture missing from that level's own `fixtures.txt` is now a third count.
+  - `viddik-matrix-report` (plain JVM) walks for `device.json`, compares every column with the
+    reference through `ImageDiffer` at default thresholds, writes `build/reports/viddik-matrix/`.
+    Run by `viddikAndroidMatrixReport` (`JavaExec` over a resolvable configuration, `isIgnoreExitValue` with a
+    `doLast` that throws what the report wrote to `failure.txt`: Gradle reports a failed `JavaExec` as its exit
+    value and nothing else). Both halves of how it
+    is attached were paid for, by a run that failed on one level with another already pulled and wrote no
+    page: it finalizes every `viddikApi<N>` task and not just the group, which never starts once a level
+    has failed; and it is **not** a dependency of `viddikAndroidMatrix`, because Gradle cancels a task
+    that is both a dependency and a finalizer along with the rest of a failed build (reproduced in a
+    three-task build). An `onlyIf` decided in `taskGraph.whenReady` keeps it quiet when one level is run
+    on its own, which would otherwise be told off for every level it did not ask for.
+  - **Three things measured on the first real three-level run (AGP 9.4.1), each of which silently cost
+    a column:**
+    - **Device test tasks were UP-TO-DATE, once FROM-CACHE.** Gradle judges them by their test
+      results, which it restores; the captures are not among its outputs, so nothing was pulled and
+      API 31 vanished from the page with every test green. The plugin sets `upToDateWhen { false }`
+      and `cacheIf { false }` on `viddikApi<N>AndroidDeviceTest`.
+    - **The pull directory's name says nothing about the device.** In one group run AGP pulled API
+      31 into `outputs/…/androidmain/viddikApi36/` and API 34 and 36 into
+      `intermediates/…/androidDeviceTest/viddikApi<N>AndroidDeviceTest/`; a one-device run pulls into
+      `outputs/…/viddikApi<N>/`. The report reads both roots and identifies a capture only by what
+      `device.json` says (API level + model), taking the most recent where two agree. An earlier
+      version keyed by directory name merged 31 into 36 and dropped it.
+      **Run one level at a time it is worse**: API 31 went into `outputs/…/viddikApi36/` over the previous
+      run's 36, API 34 into `intermediates/…/viddikApi34AndroidDeviceTest/`, a week-old 36 stayed beside it,
+      and no `viddikApi31AndroidDeviceTest` directory existed at all. Reading those directories, the page could
+      lose a level to the next run or show an old one as new. So `viddikKeepApi<N>Captures`, a finalizer of
+      each `viddikApi<N>AndroidDeviceTest`, copies out the newest capture whose `device.json` says N and was
+      written after a marker the device test touches in `doFirst`, into `build/viddik-matrix/managed/api<N>`,
+      and the report no longer reads AGP's directories at all. The keep tasks are registered in `finalizeDsl`
+      with the devices, because registering a task from a `configureEach` of the task container is refused.
+    - **An emulator left running by an interrupted run** (here, the run that hit WSAENOBUFS — a
+      process on the host holding ~11 500 sockets) stays on adb and took the next run's API 36 tests.
+      The report says when a requested level produced nothing; `adb -s emulator-NNNN emu kill` clears it.
+    - Dead end, for the record: scanning each capture into MediaStore (`MediaScannerConnection`) was
+      tried for the missing API 31 on the theory that the pull consults MediaStore. It does not, for
+      managed devices, and the scan changed nothing; the cause was the up-to-date check above.
+    - `fixtures.txt` decides the rows when present, so a PNG left behind by a renamed fixture is not one.
+    - **Each density has its own reference.** A fixture is laid out in dp, so a capture at another density is
+      another size whatever it looks like. On a page of two profiles (the managed levels on a tall device, the
+      low ones on another) every cell of the second said `size`: 1973 cells, 654 fixtures "by 25%+", and the
+      low levels had to be compared by hand. Density and not model, because `Build.MODEL` comes with the system
+      image. Columns are keyed by level, model and density, so a stale capture of a level on another profile is
+      a second column and a note rather than silently winning or losing by its timestamp; a column more than a
+      day older than the newest is called out too.
+  - **Measured on the first consumer run (876 fixtures, AGP 9.4.1, Windows):**
+    - **No managed device can capture below API 29.** Below 27 AGP refuses to create one, at task
+      creation; on 27/28 it runs every test green and pulls nothing ("additionalTestOutput is not
+      supported on Gradle managed devices running API level < 29"). The plugin keeps those levels in the
+      report and makes no managed device for them (`MIN_MANAGED_API = 29`); they come from
+      `connectedAndroidDeviceTest` on a hand-started emulator with `ANDROID_SERIAL`, kept per level for the
+      report as described above.
+    - **API 24/25 capture**: `UiAutomation.takeScreenshot()` cropped to the node, not a software
+      `View.draw()`. Verified on a 7.0 emulator: correct crop, the module's own font loaded.
+    - **Windows MAX_PATH loses captures silently.** AGP pulls with adb into
+      `<module>/build/{outputs,intermediates}/…_additional_output/…/viddik/<name>.png`; with a ~190-char
+      prefix every fixture name over ~70 chars fails (`adb: error: cannot create … Not a directory`, one
+      line per file, the test itself green). A `subst` drive does not help — run from one, AGP pulled
+      nothing at all and said nothing. Overriding `layout.buildDirectory` in the module's script fixes the
+      pull and breaks the build: tasks configured before the override keep the old path, and the
+      device-test APK came out without the test class ("OK (0 tests)"). What worked: driving each level
+      with adb directly — install, `am instrument -e additionalTestOutputDir …`, `adb pull` into a short
+      path.
+      Fixed in `matrixFileNameFor`: a name over `MAX_FILE_NAME` (48) keeps its start and takes a hash of
+      the whole name, `fixtures.txt` carries the real name (`file<TAB>title`) for the page, and a capture
+      that does not come back now fails the task (`missingCapturesMessage`) instead of leaving a green run.
+    - **Running the levels as one group stalled**: three emulators (27/31/34) stopped at the same
+      minute, adb shell to all of them hung, qemu at 0% CPU, nothing in the crash db. One level per
+      invocation went through; API 34 alone still lost its emulator once after ~200 tests (`device
+      offline`), not reproducibly on the same fixture — sharding (`numShards`/`shardIndex`) worked around it.
+    - A consumer whose app uses core library desugaring needs it in the matrix module too, or on 24/25
+      every fixture touching kotlinx-datetime dies with `NoClassDefFoundError: java/time/LocalDate`.
+      The plugin now orders the levels with `mustRunAfter`, every task of a level after every task of the
+      levels below it, and sets `ignoreFailures` on the device test tasks: with the levels in sequence a
+      failed fixture would otherwise stop every later level from starting. Setup boots an emulator too.
+      Ordering setups among themselves and tests among themselves left `viddikApi36Setup` running beside
+      `viddikApi34AndroidDeviceTest`: the test's emulator vanished at fixture 18 of 876 and the setup timed out.
+    - **That setup also left a boot snapshot that loads and never comes up**, on every run after it:
+      `Successfully loaded snapshot`, then `offline` until the run's `TimeoutException`. A cold boot of the
+      same AVD took 32 s, and the snapshot rewritten on a quiet machine loaded in 5 s. So a level stuck
+      `offline` wants `cleanManagedDevices`, not more retries.
+    - **252 fixtures came out cut at both ends, and looked like a size difference.** `testTag` stood outside
+      `requiredHeight`, so the node saw the size coerced to the safe area, `failIfItDoesNotFit` never fired,
+      and `required*` centred the overflow: a 852 dp fixture (2236 px) came out 2146 px on 34/36 and 2211 on
+      24/26/31, cut by half the difference at each end, which is also the "12 dp shift" on 31. The tag now
+      sits inside `required*`, so such a fixture fails by name; that suite wants a taller `device`.
+    - The base plugin insists on a JVM target even in a module that only wants the matrix.
+    - `captureToImage()` refuses a dialog below API 28 ("Cannot currently capture dialogs on API lower
+      than 28!"); see `captureDialog` above for what happens instead.
+    - **The renderer is `android.testoptions.manageddevices.emulator.gpu`, and it matters.** AGP's default
+      `auto-no-window` is rejected by the emulator, which falls back to `auto`, here llvmpipe. Fixtures with
+      AGSL shaders crash qemu (0xC0000005) on a software renderer: on fresh boots, 5 of 8 survived on
+      `swiftshader_indirect`, 5 of 8 on `auto`, 8 of 8 on `host`. Not caused by reusing the Activity (one
+      per fixture crashed too, 2 of 5 survived) and not a race (200 ms pauses between fixtures: 3 of 10
+      died). `host` then took all three levels through the 876 fixtures. The plugin says so at
+      configuration when the property is anything else and a managed device is in the task graph (a
+      connected run does not read it, and was told off anyway). Renderers do not agree on pixels: `host` against
+      software differs on ~630 of 811 captures, by up to ~0.4%, so columns of a page must share a renderer.
+      The hosted-runner workflow stays on swiftshader for lack of a GPU; the samples have no shaders.
+    - `TaskStop`/killing the Gradle client does not stop the daemon's build: a swiftshader run with no
+      limit of its own hung for 9 hours and helped exhaust the machine's memory. Limit a long run from
+      outside, and shut its emulator down on timeout, which is what ends the build.
+    - The API 27 aosp image leaks host memory: its qemu reached ~90 GB of commit in nine minutes on
+      swiftshader (12 GB working set and a hang on the host GPU), and a system-managed pagefile grew to
+      98 GB to cover it. Watch qemu's commit on 27; shard the run so each boot is short.
+
 ## `samples/` — a separate build, on purpose
 
 `samples/` is its own Gradle build (`samples/settings.gradle.kts`), not a set of modules in this one.
@@ -1012,7 +1306,7 @@ confirm the comparison was live, not vacuous).
 ## Publishing (`io.github.youndie.sborka.publish`)
 
 There is no `buildSrc` any more and no `viddik.publishing` script plugin: the setup that used to live
-here is one of the shared conventions, applied by all 5 modules as `alias(libs.plugins.sborkaPublish)`.
+here is one of the shared conventions, applied by all 9 modules as `alias(libs.plugins.sborkaPublish)`.
 It applies `maven-publish`, adds a sources jar for the plain `kotlin("jvm")` modules (KMP targets
 publish their own per target), fills the POM from the `sborka.*` keys in `gradle.properties` (group,
 repository slug, description, licence, developer, inception year), and registers the `wip` repository
@@ -1020,15 +1314,15 @@ at `https://reposilite.kotlin.website/snapshots`. `REPOSILITE_USER` / `REPOSILIT
 Gradle properties; CI passes them as `ORG_GRADLE_PROJECT_*` environment variables, which Gradle maps
 to properties on its own.
 
-**The version is the plain `version` key** in `gradle.properties` (`0.7.1`) — `viddik.version` was one
+**The version is the plain `version` key** in `gradle.properties` (`0.8.0`) — `viddik.version` was one
 more name for the same thing — and `-PVERSION` wins over it when given. That is the whole difference
 between the three channels:
 
 | | version | how |
 |---|---|---|
-| `wip` snapshots | `0.7.1.<run number>` | push to `main`, `publish-viddik-snapshot.yaml` (`determine-version`) |
+| `wip` snapshots | `0.8.0.<run number>` | push to `main`, `publish-viddik-snapshot.yaml` (`determine-version`) |
 | Maven Central | `0.7.0`, the last release | dispatch `central.yaml` in `youndie/sborka`, version given there |
-| `~/.m2` | `0.7.1` | `./gradlew publishToMavenLocal`, no credentials |
+| `~/.m2` | `0.8.0` | `./gradlew publishToMavenLocal`, no credentials |
 
 **The head names the next release, not the last one.** In Maven's ordering (and Renovate's) `X.Y.Z.N`
 sorts *above* `X.Y.Z`, so a head left on a released number publishes builds that rank above the
@@ -1050,7 +1344,7 @@ plainly: the run appears in sborka's Actions tab rather than in this repository'
 
 ```bash
 gh workflow run central.yaml --repo youndie/sborka \
-  -f repository=youndie/viddik -f ref=main -f version=0.7.1 \
+  -f repository=youndie/viddik -f ref=main -f version=0.8.0 \
   -f runner=ubuntu-latest -f konan-cache=true -f gate=true
 ```
 
@@ -1082,7 +1376,7 @@ one a given consumer is wired for is in its own `settings.gradle.kts`:
   which does not look at Central unless told to) and `google()` beside the second, for the
   `androidx.*` artifacts Compose Multiplatform's desktop variants pull in.
 - **`wip`** (`https://reposilite.kotlin.website/snapshots`, read is anonymous) — every push to `main`
-  as `<head>.<run number>` (`0.7.1.<run number>` now). This is where a version lives while it is
+  as `<head>.<run number>` (`0.8.0.<run number>` now). This is where a version lives while it is
   being tried out in a consumer before it is worth a release. Such a build sorts above the release of
   the same head, so a consumer on one is not offered that release as an upgrade: moving it to Central
   is a hand edit.

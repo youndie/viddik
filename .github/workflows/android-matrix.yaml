@@ -1,0 +1,50 @@
+name: Android matrix
+
+# The samples' fixtures on emulators of several API levels, and the page comparing them
+# (docs/android-matrix.md). By hand only: it boots an emulator per level and downloads their system
+# images, which is minutes of runner time per level and nothing a pull request needs to wait for. It
+# fails only when a fixture cannot be captured; differences between levels are what the report is for.
+on:
+  workflow_dispatch:
+    inputs:
+      apiLevels:
+        description: Comma-separated API levels (29 or higher; a managed device captures nothing below)
+        default: "29,31,34,36"
+
+concurrency:
+  group: android-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: youndie/sborka/.github/actions/setup-kotlin@v0.5.0.130
+
+      # The hosted Linux runners have KVM, but /dev/kvm is not open to the runner user until this rule
+      # says so, and without it the emulator falls back to software CPU emulation and times out.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # swiftshader: a hosted runner has no GPU, and this is the same software path on every one of them
+      # rather than whatever the emulator would pick. It can crash the emulator on AGSL shaders, which the
+      # samples do not use; a suite that does wants a runner with `gpu=host` (docs/android-matrix.md).
+      - name: Capture on every API level
+        working-directory: samples
+        run: >-
+          ../gradlew :fixtures:viddikAndroidMatrix --no-daemon
+          -PviddikMatrix.apiLevels=${{ inputs.apiLevels }}
+          -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: viddik-android-matrix
+          path: samples/fixtures/build/reports/viddik-matrix/
+          if-no-files-found: warn

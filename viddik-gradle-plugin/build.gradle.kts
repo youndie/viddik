@@ -22,6 +22,10 @@ dependencies {
     // the consumer's exact Kotlin compiler version, so shipping our own would be actively wrong.
     compileOnly(wip.kotlin.gradle.plugin)
     compileOnly("com.google.devtools.ksp:symbol-processing-gradle-plugin:${wip.versions.ksp.get()}")
+    // The Android matrix plugin only (ViddikAndroidMatrixPlugin), and `compileOnly` for the same reason:
+    // it runs against the AGP the consumer applied. No other class in the jar names an AGP type, so
+    // `io.github.youndie.viddik` on its own still works in a build that has no AGP at all.
+    compileOnly("com.android.tools.build:gradle-api:${wip.versions.agp.get()}")
 
     // Shipped with the plugin, unlike the two above: nothing in the consumer's build pins it, and it
     // only ever reads class files (ViddikKspDeclarationsTask).
@@ -39,6 +43,14 @@ gradlePlugin {
             description =
                 "Wires viddik screenshot testing into a Compose Multiplatform or plain JVM module: " +
                 "dependencies, KSP processor, generated-source directory and the record/verify tasks."
+        }
+        create("viddikAndroidMatrix") {
+            id = "io.github.youndie.viddik.android-matrix"
+            implementationClass = "io.github.youndie.viddik.gradle.ViddikAndroidMatrixPlugin"
+            displayName = "viddik Android matrix"
+            description =
+                "Captures a module's viddik fixtures on Gradle-managed emulators of several Android API levels " +
+                "and writes a report lining the levels up against each other. Opt-in, alongside io.github.youndie.viddik."
         }
     }
 }

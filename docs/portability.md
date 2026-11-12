@@ -133,15 +133,15 @@ same row fails on its own at 0.45%. A module that widens the share for its own f
 widens that in proportion. `pronouncedPixelBudget` caps how many **pronounced** pixels (past
 `floorChannelDelta`) the share may absorb, as a count rather than a share, so the fixture's size
 stops deciding how large an edit gets through; faint residue is still the share's to absorb. It is
-off by default, which is the comparison as it always was. 16–32 is the recommended value — viddik's
-own suite runs at 16 on Linux, macOS and Windows — and the first verify under it may fail goldens
-that an edit already went past unnoticed: re-record those. A fixture that states its own
+16 by default from 0.8 — the value viddik's own suite held on Linux, macOS and Windows — and was
+unlimited before, so the first verify after an upgrade may fail goldens that an edit already went
+past unnoticed: look at those and re-record them. A fixture that states its own
 `@ViddikScreenshot(tolerancePercent = ...)` is exempt, since the residue it pays for (text under a
 `RenderEffect`, below) is the pronounced kind.
 
 ```kotlin
 viddik {
-    pronouncedPixelBudget = 16 // default unlimited
+    pronouncedPixelBudget = 16 // default; Int.MAX_VALUE turns it off
 }
 ```
 

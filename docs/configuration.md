@@ -47,6 +47,27 @@ platform-suffixed artifacts (`viddik-annotations-desktop`, `viddik-testing-core-
 can't resolve a multiplatform variant. Get one of those wrong by hand and nothing errors — KSP just
 reports `SKIPPED` and the screenshot task passes with no tests in it.
 
+### Trying a snapshot
+
+Every change on `main` is published before it is released, to `https://reposilite.kotlin.website/snapshots`
+(read is anonymous). A snapshot's version is the next release's with a build number after it: `0.8.0.61`
+is build 61 on the way to `0.8.0`. Like Central, the repository goes in **both** settings blocks:
+
+```kotlin
+// settings.gradle.kts, in pluginManagement { repositories { } } and dependencyResolutionManagement { repositories { } }
+maven {
+    url = uri("https://reposilite.kotlin.website/snapshots")
+    content { includeGroupByRegex("io\\.github\\.youndie\\.viddik.*") }
+}
+```
+
+A filter by group needs the regex, or one `includeGroup` per group: a plugin's marker sits in a group named
+after its id, so the Android matrix's is `io.github.youndie.viddik.android-matrix`, which
+`includeGroup("io.github.youndie.viddik")` does not cover.
+
+A snapshot sorts above the release it leads to (`0.8.0.61` > `0.8.0`), so a build on one is not offered that
+release as an upgrade: going back to Central is a hand edit of the version.
+
 ## Options
 
 Every option has a default derived from the module; set only what you need.
@@ -65,7 +86,7 @@ viddik {
 | `channelTolerance` | 2 | how far a channel may differ with the pixel still counting as equal |
 | `minMismatchedPixels` | 16 | the pixel floor; 0 turns it off |
 | `floorChannelDelta` | 96 | the floor only absorbs pixels within this delta; 255 makes it count pixels only |
-| `pronouncedPixelBudget` | unlimited | how many pixels past `floorChannelDelta` the share may absorb; 16–32 recommended ([portability.md](portability.md#how-a-comparison-decides)) |
+| `pronouncedPixelBudget` | 16 | how many pixels past `floorChannelDelta` the share may absorb; `Int.MAX_VALUE` for no limit, the default before 0.8 ([portability.md](portability.md#how-a-comparison-decides)) |
 | `verifyOnCheck` | `false` | make `check` depend on `viddikVerify`; `-Pviddik.verify` does it for one run |
 | `excludeFromTestTask` | `true` | keep the generated tests out of the module's ordinary test task |
 | `shards` | 2 | test classes and forks to spread the fixtures over ([running.md](running.md#speed)) |
@@ -91,10 +112,10 @@ captured frame as `NoSuchMethodError` or `IllegalAccessError`.
 
 | viddik | Compose Multiplatform | Kotlin |
 |---|---|---|
-| 0.2 – 0.7 | 1.12 | 2.4 |
+| 0.2 – 0.8 | 1.12 | 2.4 |
 | 0.1 | 1.11 | 2.4 |
 
-viddik 0.7 needs JDK 21 to build against: the artifacts and the plugin are published for it, and an
+viddik 0.7 and later need JDK 21 to build against: the artifacts and the plugin are published for it, and an
 older toolchain fails resolution with "No matching variant". An Android consumer of
 `viddik-annotations` needs `compileSdk = 37`, which Compose Multiplatform 1.12 requires of everything
 that depends on it. Which version brought which feature is in the

@@ -13,8 +13,8 @@ public const val DEFAULT_TOLERANCE_PERCENT: Double = 0.05
 // Lossless image codecs (e.g. WebP VP8L) are decoded by different native Skia/libwebp builds per
 // platform (macOS vs Linux). Both decode results are valid, but intermediate color-transform/prediction
 // math can round by ±1 per channel between builds — invisible to the eye, but enough to blow a detailed
-// image (e.g. a card skin background) past a pixel-exact comparison. See Cards/CorporateCardLarge and
-// Cards/CorporateCardSmall, which showed ~12-17% "mismatch" that was 100% off-by-one noise on every channel.
+// image (e.g. a card skin background) past a pixel-exact comparison. Two such fixtures, measured, showed
+// ~12-17% "mismatch" that was 100% off-by-one noise on every channel.
 public const val DEFAULT_CHANNEL_TOLERANCE: Int = 2
 
 // A percentage alone is unfair to small fixtures: the same handful of glyph-outline quantization
@@ -30,13 +30,17 @@ public const val DEFAULT_MIN_MISMATCHED_PIXELS: Int = 16
 // comparison whatever the count. Twice the measured residue, and still well short of a glyph edge.
 public const val DEFAULT_FLOOR_CHANNEL_DELTA: Int = 96
 
-// The share (tolerancePercent) has no such rule of its own unless a budget is given, and a share grows
-// with the canvas: at 0.05% a 360x800 screen absorbs 144 px, enough for a 10dp status dot to turn from
-// green to red (90 px at delta 199), which the same edit on a one-row fixture fails at 0.45% (#64). A
-// budget is an absolute number of pronounced pixels the share may absorb, so the fixture's size stops
-// deciding how large an edit gets through. Unlimited by default, which is the comparison as it was:
-// a finite default would fail goldens recorded under the old rule, and a fixture that states its own
-// tolerancePercent for non-faint residue (text under a RenderEffect) is exactly what it would fail.
+// The share (tolerancePercent) grows with the canvas: at 0.05% a 360x800 screen absorbs 144 px, enough
+// for a 10dp status dot to turn from green to red (90 px at delta 199), which the same edit on a one-row
+// fixture fails at 0.45% (#64). The budget is an absolute number of pronounced pixels the share may
+// absorb, so the fixture's size stops deciding how large an edit gets through. 16 by default from 0.8,
+// the value this repository's own goldens held on Linux, macOS and Windows while it was opt-in; before
+// that it was unlimited, and a golden an edit had already gone past unnoticed fails its first verify
+// under it. A fixture that states its own tolerancePercent is exempt (ViddikEngine.verify), because the
+// residue it pays for, text under a RenderEffect, is the pronounced kind.
+public const val DEFAULT_PRONOUNCED_PIXEL_BUDGET: Int = 16
+
+/** No budget: the share absorbs pronounced pixels like any others, which was the comparison before 0.8. */
 public const val UNLIMITED_PRONOUNCED_PIXELS: Int = Int.MAX_VALUE
 
 public class DiffResult internal constructor(
@@ -74,7 +78,7 @@ public class DiffResult internal constructor(
     public fun matches(
         tolerancePercent: Double = DEFAULT_TOLERANCE_PERCENT,
         minMismatchedPixels: Int = DEFAULT_MIN_MISMATCHED_PIXELS,
-        pronouncedPixelBudget: Int = UNLIMITED_PRONOUNCED_PIXELS,
+        pronouncedPixelBudget: Int = DEFAULT_PRONOUNCED_PIXEL_BUDGET,
     ): Boolean =
         (mismatchedPixels <= minMismatchedPixels && pronouncedPixels == 0) ||
             (mismatchPercent <= tolerancePercent && pronouncedPixels <= pronouncedPixelBudget)
