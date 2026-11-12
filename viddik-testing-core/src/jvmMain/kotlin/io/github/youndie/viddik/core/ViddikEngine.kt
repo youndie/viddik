@@ -123,7 +123,7 @@ public object ViddikEngine {
             if (component.tolerancePercent != null) {
                 UNLIMITED_PRONOUNCED_PIXELS
             } else {
-                System.getProperty(PRONOUNCED_PIXEL_BUDGET_PROPERTY)?.toIntOrNull() ?: UNLIMITED_PRONOUNCED_PIXELS
+                System.getProperty(PRONOUNCED_PIXEL_BUDGET_PROPERTY)?.toIntOrNull() ?: DEFAULT_PRONOUNCED_PIXEL_BUDGET
             },
         record: Boolean = recordMode,
         force: Boolean = forceRecordMode,

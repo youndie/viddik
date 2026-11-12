@@ -342,12 +342,14 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       px at delta 199) that a one-row fixture fails at 0.45%, and since record shares the comparison
       the stale screen golden is kept too — downstream, a shared icon change rewrote 6 of ~30
       screens. `matches` now also requires `pronouncedPixels <= pronouncedPixelBudget` on the share
-      path. **Unlimited by default** (`UNLIMITED_PRONOUNCED_PIXELS`), deliberately: a finite default
-      fails goldens recorded under the old rule on the first verify, which is a minor-version
-      decision, not a patch. A fixture with its own `tolerancePercent` is exempt — `verify`'s
-      default argument — because what it pays for is the filtered-layer residue, which is
-      pronounced. This module's `jvmTest` runs at 16 (`build.gradle.kts`), so the three-OS check is
-      what shows the recommended value holds for real goldens.
+      path. **16 by default from 0.8** (`DEFAULT_PRONOUNCED_PIXEL_BUDGET`), unlimited before
+      (`UNLIMITED_PRONOUNCED_PIXELS`, still the way to turn it off): a finite default fails goldens an
+      edit had already gone past on the first verify after an upgrade, which made it a minor-version
+      decision rather than a patch. 16 is what this module's `jvmTest` ran at on three OSes while the
+      budget was opt-in. A fixture with its own `tolerancePercent` is exempt — `verify`'s default
+      argument — because what it pays for is the filtered-layer residue, which is pronounced. The
+      matrix report's `matches()` takes the default too, so a cell with a small but pronounced
+      difference from its reference is `DIFFERS`, not `SAME`.
   - **Per-fixture tolerance** (0.3.1). `ViddikComponent.tolerancePercent: Double?` carries what
     `@ViddikScreenshot(tolerancePercent = ...)` asked for, and `ViddikEngine.verify` resolves
     component → `viddik.tolerancePercent` system property → `DEFAULT_TOLERANCE_PERCENT` in its own

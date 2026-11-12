@@ -83,7 +83,8 @@ class ViddikToleranceTest {
     ) {
         writeGolden(dir)
 
-        withProperties(TOLERANCE_PROPERTY to "100.0", BUDGET_PROPERTY to null) {
+        // Every pixel is pronounced, so without a budget of its own it would fail on the default one.
+        withProperties(TOLERANCE_PROPERTY to "100.0", BUDGET_PROPERTY to UNLIMITED_PRONOUNCED_PIXELS.toString()) {
             verifyAgainst(dir, tolerance = null)
         }
     }

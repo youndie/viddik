@@ -86,7 +86,7 @@ viddik {
 | `channelTolerance` | 2 | how far a channel may differ with the pixel still counting as equal |
 | `minMismatchedPixels` | 16 | the pixel floor; 0 turns it off |
 | `floorChannelDelta` | 96 | the floor only absorbs pixels within this delta; 255 makes it count pixels only |
-| `pronouncedPixelBudget` | unlimited | how many pixels past `floorChannelDelta` the share may absorb; 16–32 recommended ([portability.md](portability.md#how-a-comparison-decides)) |
+| `pronouncedPixelBudget` | 16 | how many pixels past `floorChannelDelta` the share may absorb; `Int.MAX_VALUE` for no limit, the default before 0.8 ([portability.md](portability.md#how-a-comparison-decides)) |
 | `verifyOnCheck` | `false` | make `check` depend on `viddikVerify`; `-Pviddik.verify` does it for one run |
 | `excludeFromTestTask` | `true` | keep the generated tests out of the module's ordinary test task |
 | `shards` | 2 | test classes and forks to spread the fixtures over ([running.md](running.md#speed)) |
