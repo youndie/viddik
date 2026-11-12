@@ -48,7 +48,7 @@ dependencyResolutionManagement {
 // build.gradle.kts of the module that holds the fixtures
 plugins {
     id("com.google.devtools.ksp") version "<KSP_VERSION>" // must match your Kotlin compiler version
-    id("io.github.youndie.viddik") version "0.7.0"
+    id("io.github.youndie.viddik") version "0.8.0"
 }
 ```
 
