@@ -1,6 +1,7 @@
 package io.github.youndie.viddik.gradle
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Internal
@@ -17,6 +18,9 @@ import javax.inject.Inject
  * path of `/sdcard/Android`. On the API 27 image that row is not there at all until somebody adds it, and
  * without it the run is green and pulls nothing. So this adds it, where it is missing and on an emulator:
  * a phone on the same adb is never written to, whatever `ANDROID_SERIAL` says.
+ *
+ * It also notes, in [pending], which levels the run is for, so that a run which never reaches the device
+ * marks them; see [ViddikKeepConnectedCapturesTask].
  */
 @DisableCachingByDefault(because = "It changes the state of a device.")
 public abstract class ViddikPrepareConnectedEmulatorsTask
@@ -30,9 +34,23 @@ public abstract class ViddikPrepareConnectedEmulatorsTask
         @get:Internal
         public abstract val androidSerial: Property<String>
 
+        /** The kept connected directory's [PENDING_DIR]. */
+        @get:Internal
+        public abstract val pending: DirectoryProperty
+
         @TaskAction
         public fun prepare() {
-            connectedEmulators(androidSerial.orNull, adb("devices")).forEach { serial ->
+            val emulators = connectedEmulators(androidSerial.orNull, adb("devices"))
+            val pendingDir = pending.get().asFile
+            pendingDir.deleteRecursively()
+            pendingDir.mkdirs()
+            pendingDir.resolve(RUN_STARTED).writeText("")
+            emulators.forEach { serial ->
+                adb("-s", serial, "shell", "getprop", "ro.build.version.sdk").toIntOrNull()?.let {
+                    pendingDir.resolve("api$it").writeText("")
+                }
+            }
+            emulators.forEach { serial ->
                 if (indexed(serial)) return@forEach
                 logger.lifecycle("viddik matrix: $serial has not indexed /sdcard/Android; adding it to MediaStore.")
                 adb("-s", serial, "shell", MEDIA_STORE_INSERT)

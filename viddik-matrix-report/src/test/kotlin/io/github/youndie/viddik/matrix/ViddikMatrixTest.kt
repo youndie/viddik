@@ -325,9 +325,35 @@ class ViddikMatrixTest {
         assertEquals(1, matrix.lostCaptures)
         val json = File(out, "summary.json").readText()
         assertTrue("\"refusedCaptures\": 1" in json && "\"lostCaptures\": 1" in json, json)
-        assertTrue("\"captured\": 1, \"refused\": 1, \"lost\": 1" in json, json)
-        assertTrue("1 refused on the device, 1 lost on the way back" in summaryLine(matrix, out))
-        assertTrue("1 captured, 1 refused, 1 lost" in columnLines(matrix).single())
+        assertTrue("\"captured\": 1, \"refused\": 1, \"tooLarge\": 0, \"lost\": 1" in json, json)
+        assertTrue("1 refused on the device, 0 too large for it, 1 lost on the way back" in summaryLine(matrix, out))
+        assertTrue("1 captured, 1 refused, 0 too large, 1 lost" in columnLines(matrix).single())
+    }
+
+    @Test
+    fun `a fixture too large for the device is counted apart, and does not fail the report`() {
+        val dir = device(34)
+        File(dir, "fixtures.txt").writeText("A.png\tGroup - A\nB.png\tGroup - B\n")
+        File(dir, "does-not-fit.txt").writeText("B.png\t1080x3000 px does not fit the 1080x2200 px safe area\n")
+        dir.png("A.png")
+        val out = File(root, "report")
+
+        val matrix = buildMatrix(listOf(File(root, "pulled")))
+        writeReport(matrix, out)
+
+        assertEquals(1, matrix.unfitCaptures)
+        assertEquals(0, matrix.refusedCaptures)
+        assertEquals(null, missingCapturesMessage(matrix))
+        assertTrue("1 capture(s), from 1 fixture(s), larger" in unfitMessage(matrix).orEmpty())
+        val json = File(out, "summary.json").readText()
+        assertTrue("\"tooLargeCaptures\": 1" in json, json)
+        assertTrue("does not fit the 1080x2200" in File(out, "index.html").readText())
+
+        // With a fixture that threw beside it, the report fails, and names only that one as refused.
+        File(dir, "failures.txt").writeText("A.png\tboom\n")
+        File(dir, "A.png").delete()
+        val failing = missingCapturesMessage(buildMatrix(listOf(File(root, "pulled")))).orEmpty()
+        assertTrue("1 capture(s) refused on the device, from 1 fixture(s) that threw" in failing, failing)
     }
 
     @Test

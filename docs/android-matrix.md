@@ -28,8 +28,14 @@ versions one of them decides for both. A version catalog makes that one line.
 ./gradlew :yourModule:viddikAndroidMatrix                            # → build/reports/viddik-matrix/index.html
 ./gradlew :yourModule:viddikAndroidMatrix -PviddikMatrix.apiLevels=34   # one emulator, for a quick look
 ./gradlew :yourModule:viddikAndroidMatrix "-PviddikMatrix.device=Pixel 9 Pro XL"   # another profile, for one run
-./gradlew :yourModule:viddikAndroidMatrix -PviddikMatrix.filter=Buttons  # the fixtures whose "group - name" matches
+./gradlew :yourModule:viddikAndroidMatrix "-PviddikMatrix.filter=Buttons|Surfaces - Sheet"   # a few groups
 ```
+
+A filter is one or more patterns separated by `|`, each matched against `group - name` ignoring case. A
+filtered run adds its captures to what each level already has instead of replacing it: its fixtures are
+taken again, the rest of the column stays as the last full run left it, so a change to a few groups can be
+looked at in a minute rather than in a full run per level. A run on another device profile (another
+density) replaces the level, filtered or not, and so does any run without a filter.
 
 On a machine with a GPU, also put this in `gradle.properties`; see [Which renderer](#which-renderer):
 
@@ -83,7 +89,7 @@ managed devices do through the DSL. Run one level after another: each connected 
 directory, so `viddikKeepConnectedCaptures` runs after it and keeps its captures in
 `build/viddik-matrix/connected/api<N>`, where the report reads them and as everywhere identifies the column
 by `device.json`. A new run of a level replaces everything kept for that level, whichever port it ran on, and
-touches no other. `clean` removes them all.
+touches no other; a filtered one adds to it. `clean` removes them all.
 
 AGP finds where to pull from by asking MediaStore for `/sdcard/Android`. A fresh boot may not have indexed it
 yet and the API 27 image does not index it at all, and without it a run takes every capture and brings none
@@ -92,9 +98,15 @@ a phone on the same adb is never written to.
 
 A run that took its captures and still pulled none fails the build, in `viddikKeepConnectedCaptures`, saying
 where the device wrote them and what that means. They cannot be fetched afterwards, since AGP has uninstalled
-the test APK and they went with it: run that level again. One such case is not explained: twice, the first
-connected run of API 26 after a boot captured everything and AGP did not start pulling at all, though it had
-passed the directory itself; the run after it pulled everything.
+the test APK and they went with it: run that level again. One such case is not explained: on API 26 and 27,
+on some runs and not on others, after a cold boot as well as after a run of another level, the run captured
+everything and AGP did not start pulling at all, though it had passed the directory itself. So far, running it
+again is what has worked.
+
+A run that never reached the device (a compilation error, an APK that did not install) leaves each level's
+earlier captures where they were. `viddikPrepareConnectedEmulators` notes which levels the run was for
+before anything is compiled, and `viddikKeepConnectedCaptures` runs even when the test does not, so those
+levels are marked on the page as an earlier run's, the same way as a run that pulled nothing.
 
 A sheet with a text field comes up with the field focused on the emulators of API 24, 26 and 27, and
 not on 31, 34 and 36: below 28 a new window hands focus to its first focusable view. The keyboard that
@@ -126,8 +138,8 @@ The emulator's renderer is a setting of the whole run, and it matters twice.
 
 A fixture that fails on one level does not stop the others, and neither does it stop the rest of that
 level. The page is written either way, even when an emulator never came up, and then the task fails if
-any capture did not come back, naming the fixtures: a fixture that threw, one too large for the device,
-or a file that could not be pulled. Differences never fail it.
+any capture did not come back, naming the fixtures: a fixture that threw, or a file that could not be
+pulled. Differences never fail it, and neither does a fixture too large for the device (below).
 
 A level's device task run on its own writes no page, and it does not notice an emulator dying part
 of the way through. Only `viddikAndroidMatrix` checks that every capture came back.
@@ -154,7 +166,9 @@ On each emulator the device test is one JUnit 4 test, `captureAll`, that takes e
 Activity: a test per fixture spends most of its time starting Activities (a 876-fixture suite took 25
 minutes a level that way, and takes about 7). A fixture that throws fails that one capture; the test
 goes on with the next and fails at the end, listing them. The same list is `failures.txt` beside the
-captures, which is where the report's reason for a `no capture` cell comes from. Logcat's `viddik` tag
+captures, which is where the report's reason for a `no capture` cell comes from. A fixture too large for
+the device does not fail the test: it is listed in `does-not-fit.txt` instead, so that a failed connected
+run means a fixture broke, and not that the suite has full-height screens. Logcat's `viddik` tag
 says which fixture is being captured, which is what to look at when an emulator dies.
 
 ## How a capture is taken
@@ -197,8 +211,8 @@ says which fixture is being captured, which is what to look at when an emulator 
   has the status bar's icons and clock, each row of that band takes the colour most of it already has, which
   is what the window drew around them. A sheet going under the status bar loses its rounded corners there. A
   dialog clear of them is left alone.
-- A fixture larger than the emulator's safe area fails with its size and the device's, instead of
-  being cut off. Pick a larger `device`, or give the fixture a size that fits. `Pixel 6` has about
+- A fixture larger than the emulator's safe area is not captured, instead of being cut off, and its
+  cell says its size and the device's. It does not fail the test or the report. Pick a larger `device`, or give the fixture a size that fits. `Pixel 6` has about
   817 dp of height to offer on API 34 and 36, a little more below them, since the system bars differ;
   a suite of full-screen fixtures wants a taller profile.
 - Animations are switched off on the devices; a dark variant and a `@PreviewWrapper` theme arrive
@@ -228,7 +242,7 @@ by 1%, 5% and 25% or more, and "Differ by at least" hides the rest. `summary.jso
 carries the same numbers for a script or a CI step.
 
 The console and the column headers count each level's captures apart: how many came back, how many the
-device refused (a fixture that threw, or one too large for it), how many were lost on the way back (no word
+device refused (a fixture that threw), how many were too large for it, how many were lost on the way back (no word
 from the device and no file; on Windows, usually a machine out of sockets during `adb pull`), and how many
 that level's run did not have. `summary.json` has the same, per device and in total.
 
@@ -244,8 +258,9 @@ nothing back, its column is what the run before left, and the header and a note 
 its age. `summary.json` lists the reference of each profile (`references`) and gives every device its own.
 
 When captures are missing, `viddikAndroidMatrixReport` fails after writing the page, with the counts in the
-failure: a fixture too large for the device stays refused on every run, so a suite with one keeps the task
-red until the fixture or the `device` changes.
+failure. A fixture too large for the device is counted and noted on the page, and does not fail it: it is
+too large on every run, and a task kept red by it would say nothing when something else broke. A taller
+`device` captures it.
 
 ## Compose resources
 

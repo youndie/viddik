@@ -15,12 +15,17 @@ import java.io.File
  * empties AGP's output directory first, so after 24, 26 and 27 only 27 was left for the report to read.
  * This copies each run out to a directory nothing clears, for the report to read instead.
  *
- * It is also what notices a run that captured everything and pulled nothing. Measured: three connected
- * runs, on API 26 and 27, took all 658 captures and brought back none, with the same outcome as any other
- * run of that suite, whose failing tests were fixtures too large for the device. AGP uninstalls the test APK
- * at the end of the run, and the captures go with it, so there is nothing left to pull from here; the run
- * has to be repeated, and the build says so rather than leaving it to a line in the console. The level keeps
- * what an earlier run left, and a [PULLED_NOTHING_MARKER] beside it has the page say so.
+ * It is also what notices a run that captured everything and pulled nothing. Measured: connected runs on
+ * API 26 and 27 took all 658 captures and brought back none, with the same outcome as any other run of that
+ * suite. AGP uninstalls the test APK at the end of the run, and the captures go with it, so there is nothing
+ * left to pull from here; the run has to be repeated, and the build says so rather than leaving it to a line
+ * in the console. The level keeps what an earlier run left, and a [PULLED_NOTHING_MARKER] beside it has the
+ * page say so.
+ *
+ * And a run that never got to the device: a build that failed on compilation left the level's earlier
+ * captures where they were, with nothing to tell them from this run's. [ViddikPrepareConnectedEmulatorsTask]
+ * runs before anything else of the module and notes which levels the run is for ([PENDING_DIR]); this task
+ * finalizes it as well as the test, so it runs when the test does not, and marks those levels.
  */
 @DisableCachingByDefault(because = "It copies files whose only reader is the report, and has to run after every run.")
 public abstract class ViddikKeepConnectedCapturesTask : DefaultTask() {
@@ -36,47 +41,73 @@ public abstract class ViddikKeepConnectedCapturesTask : DefaultTask() {
 
     @TaskAction
     public fun keep() {
-        val copied = keepCaptures(pulled.get().asFile, kept.get().asFile)
-        if (copied > 0) return
+        val keptDir = kept.get().asFile
+        val pendingDir = keptDir.resolve(PENDING_DIR)
+        val pending = pendingLevels(pendingDir)
+        // Anything older than the run's start is an earlier run's, results and pulled captures alike: AGP
+        // empties its directories when its test starts, so when the test never ran they hold the last run's
+        // (measured: a run that failed to compile kept yesterday's pull of API 26 as if it were new).
+        val since = pendingDir.resolve(RUN_STARTED).takeIf { it.isFile }?.lastModified() ?: 0L
+        pendingDir.deleteRecursively()
+
+        val keptLevels = keepCaptures(pulled.get().asFile, keptDir, since)
+        if (keptLevels.isNotEmpty()) {
+            (pending - keptLevels).forEach { markPulledNothing(keptDir.resolve("api$it")) }
+            return
+        }
         val resultsDir = results.get().asFile
+        if (!testRanIn(resultsDir, since)) {
+            pending.forEach { markPulledNothing(keptDir.resolve("api$it")) }
+            val levels = if (pending.isEmpty()) "" else " (API ${pending.sorted().joinToString()})"
+            logger.warn(
+                "viddik matrix: the connected run did not get to the device$levels: the build failed before it, " +
+                    "or the test APK did not start." +
+                    if (pending.isEmpty()) "" else " The page shows those levels as an earlier run's.",
+            )
+            return
+        }
         // A module's own device tests go through this task too, and need not capture anything.
-        if (!captureRanIn(resultsDir)) {
+        if (!captureRanIn(resultsDir, since)) {
             logger.warn("viddik matrix: this connected run did not run the capture, and pulled no captures back.")
             return
         }
-        val level = levelInLogcat(resultsDir)
-        if (level != null) markPulledNothing(kept.get().asFile.resolve("api$level"))
+        val level = levelInLogcat(resultsDir, since) ?: pending.singleOrNull()
+        if (level != null) markPulledNothing(keptDir.resolve("api$level"))
         throw GradleException(
             "viddik matrix: the capture ran on ${level?.let { "API $it" } ?: "the device"} and nothing was pulled " +
                 "back, so this level has no new captures and its test APK, with the captures in it, is gone. Run it " +
-                "again. " + emptyPullExplanation(whereCapturesWent(resultsDir)),
+                "again. " + emptyPullExplanation(whereCapturesWent(resultsDir, since)),
         )
     }
 }
 
 /**
  * Copies every capture directory under [from] (the one holding a `device.json`) to `api<level>/` under
- * [into], replacing everything an earlier run left for that level and nothing of the others. The level is
- * the one the device reported: a directory name says only which serial it had, so a level run again on
- * another port used to leave its earlier run beside the new one.
+ * [into], through [keepRuns]: replacing what an earlier run left for that level, or adding to it if this run
+ * was filtered, and nothing of the other levels. The level is the one the device reported: a directory name
+ * says only which serial it had, so a level run again on another port used to leave its earlier run beside
+ * the new one.
  *
- * @return how many directories it copied.
+ * Only captures whose `device.json` is from [since] on: the rest is a run before this one.
+ *
+ * @return the levels it kept.
  */
 internal fun keepCaptures(
     from: File,
     into: File,
-): Int {
+    since: Long = 0L,
+): Set<Int> {
     val captures =
         from
             .walkTopDown()
-            .filter { it.name == CAPTURE_MARKER }
+            .filter { it.name == CAPTURE_MARKER && it.lastModified() >= since }
             .mapNotNull { it.parentFile }
-            .associateWith { capture -> "api${levelOf(capture.resolve(CAPTURE_MARKER))}" }
-    captures.values.toSet().forEach { into.resolve(it).deleteRecursively() }
-    captures.forEach { (capture, level) ->
-        capture.copyRecursively(into.resolve(level).resolve(capture.relativeTo(from)))
+            .toList()
+            .groupBy { capture -> levelOf(capture.resolve(CAPTURE_MARKER)) }
+    captures.forEach { (level, runs) ->
+        keepRuns(runs.map { it to it.relativeTo(from).path }, into.resolve("api$level"))
     }
-    return captures.size
+    return captures.keys.mapNotNull { it.toIntOrNull() }.toSet()
 }
 
 /**
@@ -92,8 +123,9 @@ internal fun emptyPullExplanation(where: String?): String =
 
         "/test_data/" in where -> {
             "The device wrote them to $where, the directory AGP itself passed to the run, and AGP then did " +
-                "not pull it. Seen on API 26 and 27, each time on the first run of a level, and a second run pulled " +
-                "everything; the cause is not known. Running with --info shows whether AGP starts the pull at all."
+                "not pull it. Seen on API 26 and 27, on some runs and not on others, after a cold boot as well " +
+                "as after a run of another level; the cause is not known, and running it again is what has " +
+                "worked. Running with --info shows whether AGP starts the pull at all."
         }
 
         else -> {
@@ -122,8 +154,11 @@ internal fun markPulledNothing(level: File) {
 }
 
 /** The level the capture said it ran on, in the logcat AGP saves beside the results. */
-internal fun levelInLogcat(results: File): Int? =
-    logcatLines(results).firstNotNullOfOrNull {
+internal fun levelInLogcat(
+    results: File,
+    since: Long = 0L,
+): Int? =
+    logcatLines(results, since).firstNotNullOfOrNull {
         CAPTURING_ON
             .find(it)
             ?.groupValues
@@ -132,15 +167,31 @@ internal fun levelInLogcat(results: File): Int? =
     }
 
 /** Whether the run whose results are under [results] has the matrix's one test in it. */
-internal fun captureRanIn(results: File): Boolean =
+internal fun captureRanIn(
+    results: File,
+    since: Long = 0L,
+): Boolean = resultFiles(results, since).any { CAPTURE_TEST_CASE in it.readText() }
+
+/** Whether any test wrote results there at or after [since]. */
+internal fun testRanIn(
+    results: File,
+    since: Long = 0L,
+): Boolean = resultFiles(results, since).any()
+
+private fun resultFiles(
+    results: File,
+    since: Long,
+): Sequence<File> =
     results
         .walkTopDown()
-        .filter { it.isFile && it.extension == "xml" }
-        .any { CAPTURE_TEST_CASE in it.readText() }
+        .filter { it.isFile && it.extension == "xml" && it.lastModified() >= since }
 
 /** What the capture said in the logcat AGP saves beside the results, which is all that is left of it. */
-internal fun whereCapturesWent(results: File): String? =
-    logcatLines(results).firstNotNullOfOrNull {
+internal fun whereCapturesWent(
+    results: File,
+    since: Long = 0L,
+): String? =
+    logcatLines(results, since).firstNotNullOfOrNull {
         CAPTURES_GO_TO
             .find(it)
             ?.groupValues
@@ -148,11 +199,32 @@ internal fun whereCapturesWent(results: File): String? =
             ?.trim()
     }
 
-private fun logcatLines(results: File): Sequence<String> =
+private fun logcatLines(
+    results: File,
+    since: Long,
+): Sequence<String> =
     results
         .walkTopDown()
         .filter { it.isFile && it.name.startsWith("logcat-") && it.name.endsWith("-captureAll.txt") }
+        .filter { it.lastModified() >= since }
         .flatMap { it.readLines().asSequence() }
+
+/**
+ * Under the kept connected directory: one empty `api<N>` file per level a connected run is about to capture,
+ * written by [ViddikPrepareConnectedEmulatorsTask] and cleared by [ViddikKeepConnectedCapturesTask].
+ */
+internal const val PENDING_DIR = ".pending"
+
+/** In [PENDING_DIR], whatever the levels: its time is when the run started. */
+internal const val RUN_STARTED = "started"
+
+/** The levels of the files in [PENDING_DIR]. */
+internal fun pendingLevels(dir: File): Set<Int> =
+    dir
+        .listFiles()
+        .orEmpty()
+        .mapNotNull { it.name.removePrefix("api").toIntOrNull() }
+        .toSet()
 
 internal const val CAPTURE_MARKER = "device.json"
 private const val CAPTURE_TEST_CASE = "name=\"captureAll\""

@@ -63,6 +63,17 @@ class ViddikMatrixFilesTest {
     }
 
     @Test
+    fun `a filter of several patterns takes the fixtures any of them matches`() {
+        val all = listOf(named("Buttons", "Primary"), named("Surfaces", "Sheet"), named("Auth", "Login"))
+
+        assertEquals(all.take(2), selected(all, "buttons|Surfaces+-+Sheet"))
+        assertEquals(all.take(1), selected(all, "Buttons%7C%7C"))
+        assertEquals(listOf("Buttons", "Surfaces - Sheet"), filterPatterns("Buttons+%7C+Surfaces+-+Sheet"))
+        assertEquals(emptyList(), filterPatterns(null))
+        assertFailsWith<IllegalArgumentException> { selected(all, "Nothing|Else") }
+    }
+
+    @Test
     fun `a failure's reason stays on its one line`() {
         assertEquals("A_b.png\tline one line two", failureLine(named("A", "b"), "line one\n  line two"))
     }

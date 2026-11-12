@@ -58,7 +58,8 @@ public abstract class ViddikKeepManagedCapturesTask : DefaultTask() {
 
 /**
  * Copies the newest capture directory under [roots] whose `device.json` says [level] and was written at or
- * after [since] to `api<level>/` under [into], replacing what was there.
+ * after [since] to `api<level>/` under [into], replacing what was there, or adding to it if the run was
+ * filtered ([keepRuns]).
  *
  * @return whether there was one.
  */
@@ -75,8 +76,6 @@ internal fun keepManagedCapture(
             .filter { levelOf(it) == level.toString() && it.lastModified() >= since }
             .maxByOrNull { it.lastModified() }
             ?: return false
-    val target = into.resolve("api$level")
-    target.deleteRecursively()
-    newest.parentFile.copyRecursively(target)
+    keepRuns(listOf(newest.parentFile to ""), into.resolve("api$level"))
     return true
 }

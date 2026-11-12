@@ -98,7 +98,10 @@ public object ViddikAndroidCapture {
      */
     public const val OUTPUT_DIR_ARGUMENT: String = "additionalTestOutputDir"
 
-    /** Instrumentation argument: capture only the fixtures whose `group - name` contains this. */
+    /**
+     * Instrumentation argument: capture only the fixtures whose `group - name` contains one of these
+     * `|`-separated patterns.
+     */
     public const val FILTER_ARGUMENT: String = "viddikFilter"
 
     private const val LOG_TAG = "viddik"
@@ -131,19 +134,27 @@ public object ViddikAndroidCapture {
     private const val NO_FIXTURE = -1
 
     /**
-     * Captures every fixture, and fails at the end, naming them, if any could not be.
+     * Captures every fixture, and fails at the end, naming them, if any threw.
      *
      * A fixture that throws takes its composition with it, so the next one gets a fresh activity: one
      * broken fixture costs one capture and one launch, not the rest of the run. One that merely does not
-     * fit costs nothing, and the fixtures after it stay where they are.
+     * fit costs nothing, the fixtures after it stay where they are, and it does not fail the test: it goes
+     * to [UNFIT_FILE] for the page, so that a failed test means a fixture that broke.
      */
     public fun captureAll(registry: List<ViddikComponent>) {
-        val components = selected(registry, InstrumentationRegistry.getArguments().getString(FILTER_ARGUMENT))
+        val filter = InstrumentationRegistry.getArguments().getString(FILTER_ARGUMENT)
+        val components = selected(registry, filter)
         val dir = outputDirectory()
         writeDeviceFile(dir)
         File(dir, EXPECTED_FILE).writeText(components.joinToString("") { expectedLine(it) + "\n" })
+        File(dir, FILTER_FILE).apply {
+            val patterns = filterPatterns(filter)
+            if (patterns.isEmpty()) delete() else writeText(patterns.joinToString("\n") + "\n")
+        }
         val failuresFile = File(dir, FAILURES_FILE).apply { writeText("") }
+        val unfitFile = File(dir, UNFIT_FILE).apply { writeText("") }
         val failures = mutableListOf<String>()
+        var unfit = 0
 
         fun fail(
             component: ViddikComponent,
@@ -184,7 +195,10 @@ public object ViddikAndroidCapture {
                         try {
                             captureOne(stage, started, dir)
                         } catch (rejected: FixtureDoesNotFit) {
-                            fail(components[started], rejected)
+                            val component = components[started]
+                            Log.i(LOG_TAG, "No capture of ${component.group} - ${component.name}: ${rejected.message}")
+                            unfitFile.appendText(failureLine(component, rejected.message.orEmpty()) + "\n")
+                            unfit++
                         }
                         started = NO_FIXTURE
                         clearStage(stage)
@@ -199,6 +213,7 @@ public object ViddikAndroidCapture {
                 fail(components[started], broken)
             }
         }
+        if (unfit > 0) Log.i(LOG_TAG, "$unfit fixture(s) do not fit this device; see $UNFIT_FILE")
         if (failures.isNotEmpty()) {
             throw AssertionError("${failures.size} fixture(s) not captured:\n" + failures.joinToString("\n"))
         }

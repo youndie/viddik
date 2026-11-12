@@ -30,16 +30,16 @@ class ViddikAndroidMatrixNamesTest {
                 level: Int,
                 device: String,
                 vararg files: String,
-            ): Int {
+            ): Set<Int> {
                 pulled.deleteRecursively()
                 pulled.capture(level, device, *files)
                 return keepCaptures(pulled, kept)
             }
 
-            assertEquals(1, run(24, "emulator-5554 - 7.0", "a.png", "stale.png"))
-            assertEquals(1, run(26, "emulator-5556 - 8.0", "a.png"))
+            assertEquals(setOf(24), run(24, "emulator-5554 - 7.0", "a.png", "stale.png"))
+            assertEquals(setOf(26), run(26, "emulator-5556 - 8.0", "a.png"))
             // The same level on another port: a directory of another name, and still the same level.
-            assertEquals(1, run(24, "emulator-5590 - 7.0", "a.png"))
+            assertEquals(setOf(24), run(24, "emulator-5590 - 7.0", "a.png"))
 
             assertEquals(
                 "emulator-5590 - 7.0",
@@ -55,13 +55,147 @@ class ViddikAndroidMatrixNamesTest {
         }
     }
 
+    private fun File.run(
+        level: Int,
+        density: String,
+        expected: List<String>,
+        pngs: List<String> = expected,
+        filter: String? = null,
+        failures: String = "",
+        unfit: String = "",
+    ): File =
+        apply {
+            mkdirs()
+            resolve("device.json").writeText("{\"sdkInt\":$level,\"model\":\"m\",\"density\":$density}")
+            resolve("fixtures.txt").writeText(expected.joinToString("") { "$it\t${it.removeSuffix(".png")}\n" })
+            pngs.forEach { resolve(it).writeText(parentFile.name) }
+            filter?.let { resolve("filter.txt").writeText("$it\n") }
+            resolve("failures.txt").writeText(failures)
+            resolve("does-not-fit.txt").writeText(unfit)
+        }
+
+    @Test
+    fun `a filtered run adds to what the level has, and a full one replaces it`() {
+        val root = createTempDirectory("viddik-append").toFile()
+        try {
+            val pulled = root.resolve("pulled")
+            val kept = root.resolve("kept")
+            pulled
+                .resolve("full/viddik")
+                .run(24, "2.625", listOf("a.png", "b.png", "c.png"), failures = "c.png\tthrew\n")
+            keepCaptures(pulled, kept)
+            val level = kept.resolve("api24/full/viddik")
+            kept.resolve("api24/$PULLED_NOTHING_MARKER").writeText("")
+
+            // Two of the three again, one of them now too large; c no longer throws.
+            pulled.deleteRecursively()
+            pulled.resolve("quick/viddik").run(
+                24,
+                "2.625",
+                listOf("b.png", "c.png", "d.png"),
+                pngs = listOf("c.png", "d.png"),
+                filter = "b|c|d",
+                unfit = "b.png\ttoo large\n",
+            )
+            assertEquals(setOf(24), keepCaptures(pulled, kept))
+
+            assertEquals("full", level.resolve("a.png").readText(), "a capture the run did not have stays")
+            assertFalse(level.resolve("b.png").exists(), "a capture the run did not take is gone, not stale")
+            assertEquals("quick", level.resolve("c.png").readText())
+            assertTrue(level.resolve("d.png").isFile)
+            assertEquals(
+                listOf("a.png", "b.png", "c.png", "d.png"),
+                level.resolve("fixtures.txt").readLines().map { it.substringBefore('\t') },
+            )
+            assertEquals("", level.resolve("failures.txt").readText())
+            assertEquals("b.png\ttoo large\n", level.resolve("does-not-fit.txt").readText())
+            assertFalse(kept.resolve("api24/$PULLED_NOTHING_MARKER").exists())
+
+            // Another density is another size of every fixture: it replaces, filtered or not.
+            pulled.deleteRecursively()
+            pulled.resolve("other/viddik").run(24, "3.5", listOf("a.png"), filter = "a")
+            keepCaptures(pulled, kept)
+            assertFalse(level.exists())
+            assertTrue(kept.resolve("api24/other/viddik/a.png").isFile)
+
+            // And a full run replaces whatever the level had.
+            pulled.deleteRecursively()
+            pulled.resolve("again/viddik").run(24, "3.5", listOf("e.png"))
+            keepCaptures(pulled, kept)
+            assertFalse(kept.resolve("api24/other").exists())
+            assertTrue(kept.resolve("api24/again/viddik/e.png").isFile)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `a managed level appends a filtered run the same way`() {
+        val root = createTempDirectory("viddik-append-managed").toFile()
+        try {
+            val pulled = root.resolve("pulled")
+            val kept = root.resolve("kept")
+            pulled.resolve("a/viddik").run(34, "2.625", listOf("a.png", "b.png"))
+            assertTrue(keepManagedCapture(listOf(pulled), 34, 0L, kept))
+            pulled.deleteRecursively()
+            pulled.resolve("b/viddik").run(34, "2.625", listOf("b.png"), filter = "b")
+            assertTrue(keepManagedCapture(listOf(pulled), 34, 0L, kept))
+
+            assertEquals("a", kept.resolve("api34/a.png").readText())
+            assertEquals(2, kept.resolve("api34/fixtures.txt").readLines().size)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `the levels a connected run was for are read back, and nothing else`() {
+        val root = createTempDirectory("viddik-pending").toFile()
+        try {
+            root.resolve("api24").writeText("")
+            root.resolve("api26").writeText("")
+            root.resolve("notes.txt").writeText("")
+
+            assertEquals(setOf(24, 26), pendingLevels(root))
+            assertEquals(emptySet(), pendingLevels(root.resolve("missing")))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `results older than the run's start say the test never ran`() {
+        val root = createTempDirectory("viddik-stale").toFile()
+        try {
+            val results = root.resolve("results").apply { mkdirs() }
+            val old = results.resolve("TEST-emulator.xml").apply { writeText("<testcase name=\"captureAll\" />") }
+            old.setLastModified(old.lastModified() - 60_000L)
+
+            assertTrue(testRanIn(results))
+            assertFalse(testRanIn(results, since = old.lastModified() + 1000L))
+            assertFalse(captureRanIn(results, since = old.lastModified() + 1000L))
+
+            // The same for what AGP pulled: a run that never reached the device left the last run's pull.
+            root.resolve("pulled").capture(26, "emulator-5556 - 8.0", "a.png")
+            val pull = root.resolve("pulled/connected/emulator-5556 - 8.0/viddik/device.json")
+            pull.setLastModified(pull.lastModified() - 60_000L)
+            assertEquals(
+                emptySet(),
+                keepCaptures(root.resolve("pulled"), root.resolve("kept"), pull.lastModified() + 1),
+            )
+            assertFalse(root.resolve("kept").exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test
     fun `a run that pulled nothing leaves what was kept`() {
         val root = createTempDirectory("viddik-keep").toFile()
         try {
             root.resolve("kept/api24").capture(24, "a", "a.png")
 
-            assertEquals(0, keepCaptures(root.resolve("nothing-here"), root.resolve("kept")))
+            assertEquals(emptySet(), keepCaptures(root.resolve("nothing-here"), root.resolve("kept")))
             assertTrue(root.resolve("kept/api24/connected/a/viddik/a.png").exists())
         } finally {
             root.deleteRecursively()

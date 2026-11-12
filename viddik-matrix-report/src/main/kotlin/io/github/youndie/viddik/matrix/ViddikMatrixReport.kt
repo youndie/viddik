@@ -44,7 +44,8 @@ public fun summaryLine(
     return "viddik android matrix: ${matrix.rows.size} fixture(s) on API " +
         matrix.devices.joinToString(", ") { it.sdkInt.toString() } +
         "; $diverging differ from ${referenceName(matrix)} (${spread(matrix)}); " +
-        "${matrix.refusedCaptures} refused on the device, ${matrix.lostCaptures} lost on the way back. " +
+        "${matrix.refusedCaptures} refused on the device, ${matrix.unfitCaptures} too large for it, " +
+        "${matrix.lostCaptures} lost on the way back. " +
         "Report: ${File(outputDir, "index.html").toURI()}"
 }
 
@@ -66,7 +67,8 @@ private fun columnCounts(
     val cells = matrix.cellsOf(device)
     val captured = cells.count { it.status != CellStatus.MISSING }
     val unlisted = cells.count { it.status == CellStatus.MISSING && !it.listed }
-    return "$captured captured, ${cells.count { it.refused }} refused, ${cells.count { it.lost }} lost" +
+    return "$captured captured, ${cells.count { it.refused }} refused, ${cells.count { it.doesNotFit }} too large, " +
+        "${cells.count { it.lost }} lost" +
         if (unlisted > 0) ", $unlisted not in its run" else ""
 }
 
@@ -81,10 +83,12 @@ private val SPREAD_PERCENTS = listOf(1.0, 5.0, 25.0)
 /**
  * What a run that lost captures says, or null if it lost none. Differences never fail the task; a missing
  * capture does, because a green task with a fixture silently absent is how a level or a long file name
- * went unnoticed.
+ * went unnoticed. A fixture too large for the device is the exception: it is a limit of the profile, said
+ * by [unfitMessage], and failing on it made every run of a suite with full-height screens fail, so that a
+ * failure no longer said anything.
  */
 public fun missingCapturesMessage(matrix: Matrix): String? {
-    if (matrix.missingCaptures == 0) return null
+    if (matrix.missingCaptures == matrix.unfitCaptures) return null
     val parts = mutableListOf<String>()
     if (matrix.lostCaptures > 0) {
         val lost = matrix.rows.filter { row -> row.cells.values.any { it.lost } }
@@ -97,8 +101,8 @@ public fun missingCapturesMessage(matrix: Matrix): String? {
     if (matrix.refusedCaptures > 0) {
         val fixtures = matrix.rows.count { row -> row.cells.values.any { it.refused } }
         parts +=
-            "${matrix.refusedCaptures} capture(s) refused on the device, from $fixtures fixture(s): a fixture " +
-            "that threw, or one too large for it, and the report says why for each."
+            "${matrix.refusedCaptures} capture(s) refused on the device, from $fixtures fixture(s) that threw; " +
+            "the report says why for each."
     }
     if (matrix.unlistedCaptures > 0) {
         parts +=
@@ -106,6 +110,14 @@ public fun missingCapturesMessage(matrix: Matrix): String? {
             "the others."
     }
     return parts.joinToString(" ")
+}
+
+/** What the page and the console say about fixtures too large for a device, or null if there are none. */
+public fun unfitMessage(matrix: Matrix): String? {
+    if (matrix.unfitCaptures == 0) return null
+    val fixtures = matrix.rows.count { row -> row.cells.values.any { it.doesNotFit } }
+    return "${matrix.unfitCaptures} capture(s), from $fixtures fixture(s), larger than the device's safe area. " +
+        "They do not fail the run; a taller `device` (-PviddikMatrix.device) captures them."
 }
 
 private const val MISSING_NAMED = 10
@@ -157,6 +169,7 @@ public fun main(args: Array<String>) {
     val missingLevels = only?.let { missingLevelsWarning(matrix, it) }
     println(summaryLine(matrix, out))
     columnLines(matrix).forEach(::println)
+    unfitMessage(matrix)?.let { System.err.println("warning: $it") }
     val lost = listOfNotNull(missingLevels, missingCapturesMessage(matrix))
     lost.forEach { System.err.println(it) }
     // Gradle reports a JavaExec that exits non-zero as nothing but its exit value, so the reason goes in a file
@@ -207,7 +220,7 @@ private fun html(matrix: Matrix): String =
         append("$diverging differ from <b>${referenceName(matrix).escape()}</b> (")
         append(spread(matrix))
         append("), the most different first. Same = within viddikVerify's default thresholds.</div>\n")
-        val notes = matrix.notes + listOfNotNull(missingCapturesMessage(matrix))
+        val notes = matrix.notes + listOfNotNull(missingCapturesMessage(matrix), unfitMessage(matrix))
         for (note in notes) append("<div class=\"meta\"><b>Note:</b> ${note.escape()}</div>\n")
         append("<div class=\"filters\">")
         append("<label><input type=\"checkbox\" id=\"only\"> Only fixtures that differ</label>")
@@ -332,6 +345,7 @@ private fun json(matrix: Matrix): String =
                     "\"pulledNothingAt\": ${it.pulledNothingAt ?: "null"}, " +
                     "\"captured\": ${cells.count { cell -> cell.status != CellStatus.MISSING }}, " +
                     "\"refused\": ${cells.count { cell -> cell.refused }}, " +
+                    "\"tooLarge\": ${cells.count { cell -> cell.doesNotFit }}, " +
                     "\"lost\": ${cells.count { cell -> cell.lost }}, " +
                     "\"notInRun\": ${cells.count { cell -> cell.status == CellStatus.MISSING && !cell.listed }}}"
             },
@@ -340,6 +354,7 @@ private fun json(matrix: Matrix): String =
         append("  \"diverging\": ${matrix.rows.count { it.diverges }},\n")
         append("  \"missingCaptures\": ${matrix.missingCaptures},\n")
         append("  \"refusedCaptures\": ${matrix.refusedCaptures},\n")
+        append("  \"tooLargeCaptures\": ${matrix.unfitCaptures},\n")
         append("  \"lostCaptures\": ${matrix.lostCaptures},\n")
         append("  \"notInRunCaptures\": ${matrix.unlistedCaptures},\n")
         append("  \"fixtures\": [\n")

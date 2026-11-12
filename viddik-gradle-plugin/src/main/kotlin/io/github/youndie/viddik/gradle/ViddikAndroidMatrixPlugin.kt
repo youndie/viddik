@@ -166,6 +166,10 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
                 task.results.set(target.layout.buildDirectory.dir(CONNECTED_RESULTS_DIR))
             }
         target.tasks.named { it == CONNECTED_TEST_TASK }.configureEach { it.finalizedBy(keepConnected) }
+        // It finalizes the preparation too, so it also runs when the test never does (a compilation error),
+        // and marks the levels that run was for; after the test, when there is one.
+        keepConnected.configure { it.mustRunAfter(target.tasks.named { name -> name == CONNECTED_TEST_TASK }) }
+        target.tasks.named { it == PREPARE_CONNECTED_TASK }.configureEach { it.finalizedBy(keepConnected) }
         val reportDir = target.layout.buildDirectory.dir(REPORT_DIR)
         val report =
             target.tasks.register(REPORT_TASK, JavaExec::class.java) { task ->
@@ -232,7 +236,20 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
                         graph.hasTask("$taskPathPrefix$DEVICE_PREFIX$level$suffix")
                     }
                 }
-            reportWanted.set(!aLevel || graph.hasTask(taskPathPrefix + MANAGED_DEVICE_GROUP_TASK))
+            val matrixRun = graph.hasTask(taskPathPrefix + MANAGED_DEVICE_GROUP_TASK)
+            reportWanted.set(!aLevel || matrixRun)
+            val (managed, connected) = apiLevels.get().partition { it >= MIN_MANAGED_API }
+            val managedRun =
+                matrixRun ||
+                    managed.any { level ->
+                        listOf(DEVICE_TEST_TASK_SUFFIX, DEVICE_SETUP_TASK_SUFFIX).any { suffix ->
+                            graph.hasTask("$taskPathPrefix$DEVICE_PREFIX$level$suffix")
+                        }
+                    }
+            // Said when it applies and not on every configuration: a connected run, or a build that runs no
+            // device at all, has no use for either line.
+            if (managedRun) target.warnAboutTheRenderer()
+            if (matrixRun && connected.isNotEmpty()) target.explainConnectedLevels(connected)
         }
         val matrixTasks =
             target.tasks.named { name ->
@@ -323,8 +340,12 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
                 task.description = "Gets the emulators of a connected run ready for AGP to pull captures from."
                 task.adb.set(androidComponents.sdkComponents.adb)
                 task.androidSerial.set(providers.environmentVariable(ANDROID_SERIAL))
+                task.pending.set(layout.buildDirectory.dir("$KEPT_CONNECTED_DIR/$PENDING_DIR"))
             }
         tasks.named { it == CONNECTED_TEST_TASK }.configureEach { it.dependsOn(prepareConnected) }
+        // First, before the compilation: what it notes is how a run that fails to compile is told apart from
+        // one that ran. Only an order, so it binds only when the preparation is in the graph at all.
+        tasks.named { it != PREPARE_CONNECTED_TASK }.configureEach { it.mustRunAfter(prepareConnected) }
 
         // The devices are declared once the build script is done with `viddikAndroidMatrix { }`, and
         // before AGP turns them into tasks — which is what finalizeDsl is for.
@@ -347,18 +368,8 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
                     ?: throw GradleException(
                         "$path has no Android device test compilation for the viddik matrix to run in.",
                     )
-            // AGP's own default is an option the emulator rejects ("Selected GPU option 'auto-no-window' is
-            // not valid"), and what it falls back to is a software Vulkan that can take qemu down. Measured
-            // on glass (AGSL) fixtures, a fresh boot per run: llvmpipe died in 3 of 8, swiftshader in 3 of 8,
-            // the host GPU in 0 of 8. An option AGP reads for itself, so a plugin cannot set it.
-            if (providers.gradleProperty(EMULATOR_GPU_PROPERTY).orNull != "host") {
-                logger.lifecycle(
-                    "viddik matrix: $EMULATOR_GPU_PROPERTY is not `host`. A software renderer can crash the " +
-                        "emulator on fixtures with shaders, which loses that level's captures; on a machine with " +
-                        "a GPU, put `$EMULATOR_GPU_PROPERTY=host` in gradle.properties (docs/android-matrix.md).",
-                )
-            }
-            // `-PviddikMatrix.filter=Buttons`: one group of a large suite, for a quick look at a change.
+            // `-PviddikMatrix.filter=Buttons|Surfaces`: a few groups of a large suite, for a quick look at a
+            // change. A filtered run adds to what each level already has rather than replacing it (keepRuns).
             // Encoded, because AGP writes these arguments into an `am instrument` command line unquoted. A
             // space there ended the command ("Error: Invalid userId -2"): no test ran, nothing was pulled,
             // and the build stayed green.
@@ -374,17 +385,7 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
             // nothing back ("additionalTestOutput is not supported on Gradle managed devices running API
             // level < 29"), so the column would silently be empty. Both stay in the report and are
             // captured by a connected run instead.
-            val (managed, connected) = levels.partition { it >= MIN_MANAGED_API }
-            if (connected.isNotEmpty()) {
-                logger.lifecycle(
-                    "viddik matrix: API ${connected.joinToString()} is below what Gradle Managed Devices " +
-                        "can capture (API $MIN_MANAGED_API: no device below 27, no test output pulled below " +
-                        "29). Start an emulator of that level and run `ANDROID_SERIAL=<its serial> ./gradlew " +
-                        "$path:connectedAndroidDeviceTest`; the report picks its captures up from " +
-                        "build/$KEPT_CONNECTED_DIR (docs/android-matrix.md, \"Levels below 29\").",
-                )
-            }
-            managed.forEach { api ->
+            levels.filter { it >= MIN_MANAGED_API }.forEach { api ->
                 tasks.register(keepTaskName(api), ViddikKeepManagedCapturesTask::class.java) { task ->
                     task.description = "Keeps what the API $api managed device pulled, for the matrix report."
                     task.pulled.from(
@@ -403,6 +404,31 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
                 group.targetDevices.add(device)
             }
         }
+    }
+
+    /**
+     * AGP's own default is an option the emulator rejects ("Selected GPU option 'auto-no-window' is not
+     * valid"), and what it falls back to is a software Vulkan that can take qemu down. Measured on fixtures
+     * with AGSL shaders, a fresh boot per run: llvmpipe died in 3 of 8, swiftshader in 3 of 8, the host GPU in
+     * 0 of 8. An option AGP reads for itself, so a plugin cannot set it.
+     */
+    private fun Project.warnAboutTheRenderer() {
+        if (providers.gradleProperty(EMULATOR_GPU_PROPERTY).orNull == "host") return
+        logger.lifecycle(
+            "viddik matrix: $EMULATOR_GPU_PROPERTY is not `host`. A software renderer can crash the " +
+                "emulator on fixtures with shaders, which loses that level's captures; on a machine with " +
+                "a GPU, put `$EMULATOR_GPU_PROPERTY=host` in gradle.properties (docs/android-matrix.md).",
+        )
+    }
+
+    private fun Project.explainConnectedLevels(connected: List<Int>) {
+        logger.lifecycle(
+            "viddik matrix: API ${connected.joinToString()} is below what Gradle Managed Devices " +
+                "can capture (API $MIN_MANAGED_API: no device below 27, no test output pulled below " +
+                "29). Start an emulator of that level and run `ANDROID_SERIAL=<its serial> ./gradlew " +
+                "$path:connectedAndroidDeviceTest`; the report picks its captures up from " +
+                "build/$KEPT_CONNECTED_DIR (docs/android-matrix.md, \"Levels below 29\").",
+        )
     }
 
     private fun KotlinMultiplatformAndroidLibraryTarget.deviceTestCompilation():

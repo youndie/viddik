@@ -69,8 +69,11 @@ public class MatrixCell(
     public val reason: String? = null,
     /** False for a [CellStatus.MISSING] cell whose level was not asked for this fixture in the run on the page. */
     public val listed: Boolean = true,
+    /** A [CellStatus.MISSING] cell whose fixture is larger than the device's safe area: a limit, not a failure. */
+    public val unfit: Boolean = false,
 ) {
-    internal val refused: Boolean get() = status == CellStatus.MISSING && listed && reason != null
+    internal val refused: Boolean get() = status == CellStatus.MISSING && listed && reason != null && !unfit
+    internal val doesNotFit: Boolean get() = status == CellStatus.MISSING && listed && unfit
     internal val lost: Boolean get() = status == CellStatus.MISSING && listed && reason == null
 }
 
@@ -107,11 +110,14 @@ public class Matrix(
     public val notes: List<String> = emptyList(),
     private val references: Map<MatrixDevice, MatrixDevice> = emptyMap(),
 ) {
-    /** Captures a device owed and that are not here, for whichever reason; the three below add up to it. */
+    /** Captures a device owed and that are not here, for whichever reason; the four below add up to it. */
     public val missingCaptures: Int get() = rows.sumOf { it.missingOn }
 
-    /** The device tried and said why not: a fixture that threw, or one too large for it. */
+    /** The device tried and said why not: a fixture that threw. */
     public val refusedCaptures: Int get() = missingCells().count { it.refused }
+
+    /** Fixtures larger than the device's safe area. They do not fail the report: a larger `device` is the fix. */
+    public val unfitCaptures: Int get() = missingCells().count { it.doesNotFit }
 
     /** The device listed the fixture and reported no failure, and no file is here: lost on the way back. */
     public val lostCaptures: Int get() = missingCells().count { it.lost }
@@ -200,16 +206,19 @@ public fun buildMatrix(
     // What each device said it would capture, when it said so: a name in that list with no PNG is a
     // capture that failed or never made it back, and a PNG not in it is a leftover from an earlier run
     // (a fixture since renamed or removed) that must not come back as a row.
-    val reasons =
+    fun reasonsIn(file: String) =
         devices.associate { device ->
             device.slug to
-                File(device.dir, FAILURES_FILE)
+                File(device.dir, file)
                     .takeIf { it.isFile }
                     ?.readLines()
                     .orEmpty()
                     .filter { it.contains('\t') }
                     .associate { it.substringBefore('\t') to it.substringAfter('\t') }
         }
+    val reasons = reasonsIn(FAILURES_FILE)
+    // A capture older than this file has "does not fit" among its failures, and it is counted as refused.
+    val unfitReasons = reasonsIn(UNFIT_FILE)
 
     val titles = mutableMapOf<String, String?>()
     val listed = mutableMapOf<String, Set<String>>()
@@ -246,6 +255,15 @@ public fun buildMatrix(
 
                             listed[device.slug]?.contains(name) == false -> {
                                 MatrixCell(CellStatus.MISSING, null, reason = NOT_LISTED_REASON, listed = false)
+                            }
+
+                            unfitReasons[device.slug]?.containsKey(name) == true -> {
+                                MatrixCell(
+                                    CellStatus.MISSING,
+                                    null,
+                                    reason = unfitReasons.getValue(device.slug).getValue(name),
+                                    unfit = true,
+                                )
                             }
 
                             else -> {
@@ -381,6 +399,7 @@ public fun missingLevelsWarning(
 
 internal const val EXPECTED_FILE = "fixtures.txt"
 internal const val FAILURES_FILE = "failures.txt"
+internal const val UNFIT_FILE = "does-not-fit.txt"
 
 internal fun readDevice(file: File): MatrixDevice {
     val text = file.readText()

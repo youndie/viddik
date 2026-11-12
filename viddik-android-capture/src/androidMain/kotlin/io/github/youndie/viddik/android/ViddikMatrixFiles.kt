@@ -38,20 +38,41 @@ internal fun matrixFileNameFor(component: ViddikComponent): String {
 }
 
 /**
- * The fixtures a run covers: all of them, or those whose `group - name` contains [filter], ignoring case.
- * A filter that matches nothing fails, listing nothing: a run of no fixtures must not look like a pass.
+ * The fixtures a run covers: all of them, or those whose `group - name` contains one of the patterns in
+ * [encodedFilter], ignoring case. Patterns are separated by `|` (`Buttons|Surfaces - Sheet`), so a run can
+ * take a few groups of a large suite at once. A filter that matches nothing fails: a run of no fixtures must
+ * not look like a pass.
  */
 internal fun selected(
     components: List<ViddikComponent>,
     encodedFilter: String?,
 ): List<ViddikComponent> {
-    if (encodedFilter.isNullOrEmpty()) return components
-    // Form-encoded by the plugin: the argument travels through a command line nobody quotes.
-    val filter = URLDecoder.decode(encodedFilter, Charsets.UTF_8.name())
-    val matching = components.filter { "${it.group} - ${it.name}".contains(filter, ignoreCase = true) }
-    require(matching.isNotEmpty()) { "No fixture of ${components.size} matches the filter \"$filter\"" }
+    val patterns = filterPatterns(encodedFilter)
+    if (patterns.isEmpty()) return components
+    val matching =
+        components.filter { component ->
+            val title = "${component.group} - ${component.name}"
+            patterns.any { title.contains(it, ignoreCase = true) }
+        }
+    require(matching.isNotEmpty()) {
+        "No fixture of ${components.size} matches the filter \"${patterns.joinToString(FILTER_SEPARATOR)}\""
+    }
     return matching
 }
+
+/** The patterns of a filter argument, decoded: the plugin form-encodes it for a command line nobody quotes. */
+internal fun filterPatterns(encodedFilter: String?): List<String> =
+    if (encodedFilter.isNullOrEmpty()) {
+        emptyList()
+    } else {
+        URLDecoder
+            .decode(encodedFilter, Charsets.UTF_8.name())
+            .split(FILTER_SEPARATOR)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+    }
+
+private const val FILTER_SEPARATOR = "|"
 
 /** A line of [EXPECTED_FILE]: the file, a tab, and what the report calls the fixture. */
 internal fun expectedLine(component: ViddikComponent): String {
@@ -59,7 +80,7 @@ internal fun expectedLine(component: ViddikComponent): String {
     return matrixFileNameFor(component) + "\t" + title
 }
 
-/** A line of [FAILURES_FILE]: the file that is not there, a tab, and why. */
+/** A line of [FAILURES_FILE] or [UNFIT_FILE]: the file that is not there, a tab, and why. */
 internal fun failureLine(
     component: ViddikComponent,
     reason: String,
@@ -81,3 +102,17 @@ internal const val EXPECTED_FILE: String = "fixtures.txt"
  * registry the test report has one failure for all of them, so the page reads the reasons from here.
  */
 internal const val FAILURES_FILE: String = "failures.txt"
+
+/**
+ * One per device: the fixtures too large for its safe area, in [failureLine]s. Apart from [FAILURES_FILE]
+ * because they are not failures of the fixture: a suite with full-height screens has a couple of hundred of
+ * them on a small device, and as failing tests they made the run's exit code say nothing — a run that died
+ * on compilation looked like every other.
+ */
+internal const val UNFIT_FILE: String = "does-not-fit.txt"
+
+/**
+ * Written only by a filtered run, holding its patterns: the host then adds this run's captures to what the
+ * level already has instead of replacing them, so a quick look at three groups does not empty the column.
+ */
+internal const val FILTER_FILE: String = "filter.txt"

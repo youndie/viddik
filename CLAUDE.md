@@ -808,7 +808,25 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       fit" a 1436 px safe area. `clearStage` asks through the dialog's window first.
     - **A filter with a space silently captured nothing.** AGP writes instrumentation arguments into an
       unquoted `am instrument` line: `Error: Invalid userId -2`, no test run, build green. The plugin
-      form-encodes the value, `selected` decodes it.
+      form-encodes the value, `selected` decodes it. Patterns are `|`-separated: one substring made a look at a
+      few groups of a large suite a full run.
+    - **A filtered run adds to the level; anything else replaces it** (`keepRuns`, `ViddikKeptRuns.kt`).
+      Replacing was the only rule, and with it a filtered run emptied the rest of the column, so getting a
+      changed group of a few dozen fixtures onto a full page took a full run of every level, 6-16 minutes
+      each on a 658-fixture suite. The capture writes `filter.txt` only when filtered, and the keeper merges
+      such a run into what is kept: its PNGs, its `fixtures.txt` lines and what `failures.txt` /
+      `does-not-fit.txt` say about its fixtures replace the old ones, a fixture it listed and did not capture
+      loses its old PNG rather than keeping a stale one, and `device.json` stays the earlier one's so the
+      column's age is that of the run most of it came from. A capture of another `sdkInt`/`model`/`density`
+      replaces whatever the filter, since two densities are two sizes of every fixture, and so does a kept
+      capture with no `fixtures.txt`, which cannot say which of its files are rows.
+    - **A fixture too large for the device does not fail the test** (`does-not-fit.txt`, the report's
+      `unfit` cells). On a suite with full-height screens about 200 fixtures do not fit the default profile,
+      so every connected run failed, and its exit code said nothing: a run that died on compilation looked
+      exactly like the others, and was read as one. Now only a fixture that
+      threw fails `captureAll`, and the report counts "too large" apart (console, column headers,
+      `summary.json` `tooLarge`/`tooLargeCaptures`, a note on the page) without failing on it. Captures from
+      before this have the reason in `failures.txt` and are still counted as refused.
     - **A connected run can take every capture and pull none.** AGP asks MediaStore for `/sdcard/Android`
       before the run, and with no row it passes no `additionalTestOutputDir` at all (seen in the `am instrument`
       line at `--info`): the capture falls back to its own external files directory, the tests are green, and
@@ -823,7 +841,10 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       of the samples with no pause did not repeat it. A third case, on API 27, broke both tells: the plugin had
       just inserted the MediaStore row, and the end of the test to the end of the build took 12 s against 15 s for
       the retry that pulled everything. All three empty pulls came right after a run of another level on the same
-      serial, but so did a 27 that pulled fine. What is left to look at is an `--info` log of the next one.
+      serial, but so did a 27 that pulled fine. **"The first run after a boot" did not hold either**: later, with a
+      cold boot (`-no-snapshot`) before every run, API 26 pulled nothing in 2 runs of 4, neither of them the
+      first, about 9 s from the end of the test to the end of the build, and the message saying "each time on the
+      first run of a level" had to go. What is left to look at is an `--info` log of the next one.
       A rescue from here is impossible, because AGP has uninstalled the test APK by then and the captures went
       with it. So `viddikKeepConnectedCaptures` fails the build when the results have a `captureAll` and nothing
       came back, quoting where logcat says the captures went and reading it (`emptyPullExplanation`):
@@ -833,13 +854,22 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       task leaves an empty `pulled-nothing-at` in that level's kept directory (the managed keeper does the same):
       the column still shows the run before, and the page says so whatever its age, which the day-old note
       alone did not. A successful keep replaces the directory, note and all. Without a `captureAll` it only warns, since a module's own device tests run through the same
-      task and need not capture anything. The MediaStore query's spaces are backslash-escaped because a double
+      task and need not capture anything.
+      **A run that never reached the device** left the old captures unmarked: on a compilation error the test
+      task never runs, so neither did its finalizer. `viddikPrepareConnectedEmulators` now writes
+      `build/viddik-matrix/connected/.pending/` (a `started` stamp and an `api<N>` per emulator, from
+      `getprop ro.build.version.sdk`), every task of the module `mustRunAfter` it so it comes before the
+      compilation, and the keeper finalizes it as well as the test (and `mustRunAfter` the test). Without
+      results newer than the stamp, the pending levels get `pulled-nothing-at` and a warning. The stamp also
+      bounds what is kept: AGP empties its pull directory only when its test starts, and the first version of
+      this, checked by breaking the samples' device-test compilation, re-kept the previous day's API 26 pull
+      as if it were new. A phone has no pending level, so the warning names none. The MediaStore query's spaces are backslash-escaped because a double
       quote does not survive the way through `ExecOperations` to adb on Windows: the query failed, and every
       emulator looked unindexed.
     - **Each connected run clears AGP's output directory**, so after 24, 26 and 27 only 27 reached the page.
       `viddikKeepConnectedCaptures` finalizes `connectedAndroidDeviceTest` and copies each run out to
       `build/viddik-matrix/connected/api<N>`, which is what the report reads. Keyed by the level in
-      `device.json` and replaced whole, because AGP's directory is named after the serial: a level run again on
+      `device.json` and replaced whole (unless filtered, above), because AGP's directory is named after the serial: a level run again on
       another port used to leave its earlier run beside the new one. A task of its own with a plain file copy
       rather than `Copy`: a `Copy` with nothing to copy is `NO-SOURCE`, and the check above would never run.
     - **`adb pull` loses single files when the host is out of sockets** (`cannot connect to daemon …
@@ -943,7 +973,8 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       `swiftshader_indirect`, 5 of 8 on `auto`, 8 of 8 on `host`. Not caused by reusing the Activity (one
       per fixture crashed too, 2 of 5 survived) and not a race (200 ms pauses between fixtures: 3 of 10
       died). `host` then took all three levels through the 876 fixtures. The plugin says so at
-      configuration when the property is anything else. Renderers do not agree on pixels: `host` against
+      configuration when the property is anything else and a managed device is in the task graph (a
+      connected run does not read it, and was told off anyway). Renderers do not agree on pixels: `host` against
       software differs on ~630 of 811 captures, by up to ~0.4%, so columns of a page must share a renderer.
       The hosted-runner workflow stays on swiftshader for lack of a GPU; the samples have no shaders.
     - `TaskStop`/killing the Gradle client does not stop the daemon's build: a swiftshader run with no
