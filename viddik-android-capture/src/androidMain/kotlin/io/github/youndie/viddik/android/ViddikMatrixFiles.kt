@@ -116,3 +116,24 @@ internal const val UNFIT_FILE: String = "does-not-fit.txt"
  * level already has instead of replacing them, so a quick look at three groups does not empty the column.
  */
 internal const val FILTER_FILE: String = "filter.txt"
+
+/**
+ * Where the run of fixtures that starts at [start] ends (exclusive): the fixtures that take turns in one
+ * activity and one composition.
+ *
+ * A fixture captured at a moment of the clock (`captureAtMillis`) is a run of its own. The stage's clock is
+ * shared by every fixture on it and only moves forward, so the frame time a timed fixture saw would depend on
+ * how many fixtures were captured before it — in a full run, a filtered one, or a shard — and an animation
+ * that reads the frame time itself (a spinner whose angle is the frame time modulo a turn) would come out at
+ * another angle each time. An activity of its own starts it from the same clock every time. Every other
+ * fixture shares the stage, which is what keeps a capture at a fraction of a second.
+ */
+internal fun stageRunEnd(
+    components: List<ViddikComponent>,
+    start: Int,
+): Int {
+    if (components[start].captureAtMillis != null) return start + 1
+    var end = start + 1
+    while (end < components.size && components[end].captureAtMillis == null) end++
+    return end
+}

@@ -1,11 +1,13 @@
 package io.github.youndie.viddik.samples
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -23,7 +25,16 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import io.github.youndie.viddik.LocalViddikDarkTheme
@@ -107,6 +118,33 @@ public fun SampleChip() {
     SampleTheme {
         AssistChip(onClick = {}, label = { Text("Filter") }, modifier = Modifier.padding(8.dp))
     }
+}
+
+// A spinner that turns on a frame loop for as long as it is busy, by the frame time itself: never idle, so
+// it is captured at a moment of the clock instead. The same fixture again at the end of the file is how the
+// Android matrix shows that the moment does not depend on what was captured before it — the two captures
+// have to come out byte for byte the same on every level.
+@Composable
+private fun BusySpinner() {
+    var frameMillis by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (true) withFrameMillis { frameMillis = it }
+    }
+    val ink = MaterialTheme.colorScheme.primary
+    Canvas(Modifier.padding(16.dp).size(40.dp)) {
+        rotate(degrees = frameMillis % SPINNER_TURN_MS * 360f / SPINNER_TURN_MS) {
+            val bar = 6.dp.toPx()
+            drawRect(ink, topLeft = Offset((size.width - bar) / 2, 0f), size = Size(bar, size.height / 2))
+        }
+    }
+}
+
+private const val SPINNER_TURN_MS = 1200L
+
+@ViddikScreenshot(name = "Busy spinner", group = "Feedback", width = 72, height = 72, captureAtMillis = 500)
+@Composable
+public fun SampleBusySpinner() {
+    SampleTheme { BusySpinner() }
 }
 
 // A full-screen dialog: a window of its own, with a scrim, that reaches the system bars. The one shape
@@ -201,4 +239,10 @@ public fun SampleCard() {
             }
         }
     }
+}
+
+@ViddikScreenshot(name = "Busy spinner, again", group = "Feedback", width = 72, height = 72, captureAtMillis = 500)
+@Composable
+public fun SampleBusySpinnerAgain() {
+    SampleTheme { BusySpinner() }
 }
