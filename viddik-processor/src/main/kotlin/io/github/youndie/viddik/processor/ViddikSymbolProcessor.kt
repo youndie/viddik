@@ -141,6 +141,7 @@ public class ViddikSymbolProcessor(
                     height = annotation.argument("height") as? Int,
                     darkVariant = annotation.argument("darkVariant") as? Boolean == true,
                     tolerancePercent = annotation.argument("tolerancePercent") as? Double,
+                    captureAtMillis = annotation.argument("captureAtMillis") as? Long,
                 )
 
             val previewArgs = collectPreviews(symbol.annotations.toList(), depth = 0)
@@ -390,6 +391,7 @@ private fun FixtureMetadata.toEntries(
                 fontScale = fontScale,
                 tolerancePercent = tolerancePercent,
                 wrapperQualifiedName = wrapperQualifiedName,
+                captureAtMillis = captureAtMillis,
             ),
         )
     }
@@ -405,6 +407,7 @@ private fun FixtureMetadata.toEntries(
             fontScale = fontScale,
             tolerancePercent = tolerancePercent,
             wrapperQualifiedName = wrapperQualifiedName,
+            captureAtMillis = captureAtMillis,
         )
     return if (darkVariant) listOf(base, base.copy(name = "$name Dark", forceDark = true)) else listOf(base)
 }

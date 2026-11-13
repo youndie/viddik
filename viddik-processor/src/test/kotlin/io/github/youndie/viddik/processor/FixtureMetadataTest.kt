@@ -21,6 +21,7 @@ private val bareScreenshot =
         height = UNSPECIFIED,
         darkVariant = false,
         tolerancePercent = UNSPECIFIED_TOLERANCE,
+        captureAtMillis = UNSPECIFIED_CAPTURE_TIME,
     )
 
 private fun resolveAll(
@@ -312,6 +313,59 @@ class FixtureMetadataTest {
         )
 
         assertEquals(1, errors)
+    }
+
+    // --- capture at a moment of the clock -------------------------------------------------------
+
+    @Test
+    fun `a capture time given by hand is carried through`() {
+        val fixture = checkNotNull(resolve(screenshot = bareScreenshot.copy(captureAtMillis = 500L)))
+        assertEquals(500L, fixture.captureAtMillis)
+    }
+
+    @Test
+    fun `an omitted capture time stays unstated, so the fixture is captured once idle`() {
+        // null is what keeps waitForIdle; -1 reaching a component would ask for a moment before the
+        // content was set.
+        assertNull(checkNotNull(resolve()).captureAtMillis)
+    }
+
+    @Test
+    fun `zero is a moment like any other`() {
+        // The first composition, laid out, before any frame has run: a deterministic picture too.
+        assertEquals(0L, checkNotNull(resolve(screenshot = bareScreenshot.copy(captureAtMillis = 0L))).captureAtMillis)
+    }
+
+    @Test
+    fun `a negative capture time is refused, once, naming the argument`() {
+        var errors = 0
+        var message = ""
+        val fixtures =
+            resolveFixtures(
+                "SampleFixture",
+                bareScreenshot.copy(captureAtMillis = -5L),
+                List(3) { PreviewArgs(name = "#$it") },
+                onError = {
+                    errors++
+                    message = it
+                },
+                onWarn = { },
+            )
+
+        assertEquals(emptyList(), fixtures)
+        assertEquals(1, errors)
+        assertTrue("captureAtMillis" in message, "the message should name the argument: $message")
+    }
+
+    @Test
+    fun `one capture time covers every fixture a multipreview produces`() {
+        val fixtures =
+            resolveAll(
+                screenshot = bareScreenshot.copy(captureAtMillis = 500L),
+                previews = listOf(PreviewArgs(name = "Light"), PreviewArgs(name = "Dark", uiMode = UI_MODE_NIGHT_YES)),
+            )
+
+        assertEquals(listOf(500L, 500L), fixtures.map { it.captureAtMillis })
     }
 
     // --- device specs -------------------------------------------------------------------------

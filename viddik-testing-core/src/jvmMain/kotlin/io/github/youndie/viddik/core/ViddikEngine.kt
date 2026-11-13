@@ -135,6 +135,7 @@ public object ViddikEngine {
                 width = component.width,
                 height = component.height,
                 fontScale = component.fontScale,
+                captureAtMillis = component.captureAtMillis,
                 content = component.content,
             )
 
@@ -312,6 +313,7 @@ public object ViddikEngine {
                 width = component.width,
                 height = component.height,
                 fontScale = component.fontScale,
+                captureAtMillis = component.captureAtMillis,
                 content = component.content,
             )
         val actualFile = File(reportsDir, fileName.removeSuffix(".png") + "_ACTUAL.png")

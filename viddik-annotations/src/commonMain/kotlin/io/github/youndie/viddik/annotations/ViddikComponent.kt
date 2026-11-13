@@ -21,6 +21,13 @@ public const val UNSPECIFIED: Int = Int.MIN_VALUE
  */
 public const val UNSPECIFIED_TOLERANCE: Double = -1.0
 
+/**
+ * A [ViddikScreenshot.captureAtMillis] that was not given — the normal case, a fixture captured once
+ * it is idle. Negative for the same reason [UNSPECIFIED_TOLERANCE] is: a moment on the clock after
+ * the content is set is never before it.
+ */
+public const val UNSPECIFIED_CAPTURE_TIME: Long = -1L
+
 public data class ViddikComponent(
     public val name: String,
     public val group: String,
@@ -42,5 +49,15 @@ public data class ViddikComponent(
      * the run, and a component carrying a copy of it would pin a fixture to today's value.
      */
     public val tolerancePercent: Double? = null,
+    /**
+     * Milliseconds of the test clock after which this fixture is captured with the clock frozen, or
+     * `null` — the normal case — to be captured once Compose is idle.
+     *
+     * For content that is never idle: an animation that runs for as long as it is composed, such as
+     * a spinner turning on a frame loop. Waiting for idle never returns for it, so the capture
+     * stops the clock, sets the content and advances by exactly this much instead, which gives the
+     * same picture on every run. See `@ViddikScreenshot(captureAtMillis)`.
+     */
+    public val captureAtMillis: Long? = null,
     public val content: @Composable () -> Unit,
 )

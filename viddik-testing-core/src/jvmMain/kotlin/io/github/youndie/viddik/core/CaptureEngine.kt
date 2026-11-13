@@ -50,9 +50,18 @@ public fun captureComposable(
     height: Int = AUTO_HEIGHT,
     compositionLocals: List<ProvidedValue<*>> = emptyList(),
     fontScale: Float = 1f,
+    /**
+     * Milliseconds of a frozen test clock to capture at, instead of waiting for idle — for content
+     * that never becomes idle. `null`, the default, waits for idle as every capture always has. See
+     * `@ViddikScreenshot(captureAtMillis)`.
+     */
+    captureAtMillis: Long? = null,
     content: @Composable () -> Unit,
 ): BufferedImage {
-    val request = CaptureRequest(width, height, compositionLocals, fontScale, content)
+    require(captureAtMillis == null || captureAtMillis >= 0) {
+        "captureAtMillis = $captureAtMillis is before the content is even set; it has to be 0 or more."
+    }
+    val request = CaptureRequest(width, height, compositionLocals, fontScale, captureAtMillis, content)
     return if (sceneReuseEnabled) CaptureSession.capture(request) else request.captureInItsOwnScene()
 }
 
@@ -62,6 +71,7 @@ internal class CaptureRequest(
     val height: Int,
     val compositionLocals: List<ProvidedValue<*>>,
     val fontScale: Float,
+    val captureAtMillis: Long?,
     val content: @Composable () -> Unit,
 ) {
     val autoHeight: Boolean = height == AUTO_HEIGHT
@@ -127,6 +137,17 @@ private fun SkikoComposeUiTest.capture(
         }
     }
 
+    // A fixture that is never idle — a spinner turning on a withFrameMillis loop for as long as it is
+    // composed — is captured at a fixed moment of a frozen clock instead. With autoAdvance on,
+    // waitForIdle advances frame after frame until nothing awaits a frame, which for such a loop is
+    // never: the capture spun until the shared scene's 120 s timeout, or forever in a scene of its
+    // own. With the clock frozen the harness counts a parked frame awaiter as idle (it is the test's
+    // job to advance), so setContent returns once the first composition is laid out, and the frames
+    // up to the requested moment run as the clock is advanced — every 16 ms, each with its
+    // recomposition. Frozen before setContent: the harness's own setContent waits for idle itself.
+    // Set on every capture, so a scene that ever ran one frozen cannot hand that to the next fixture.
+    val captureAt = request.captureAtMillis
+    mainClock.autoAdvance = captureAt == null
     if (throughHarness) {
         setContent(fixture)
     } else {
@@ -134,6 +155,7 @@ private fun SkikoComposeUiTest.capture(
         // nothing to resize — see CaptureSession.start for why that matters.
         scene.setContent(content = fixture)
     }
+    if (captureAt != null) mainClock.advanceTimeBy(captureAt)
     waitForIdle()
 
     if (glyphCheckEnabled) {
@@ -280,6 +302,7 @@ private object CaptureSession {
     private var retired = false
 
     fun capture(request: CaptureRequest): BufferedImage {
+        if (request.captureAtMillis != null) return captureAlone(request)
         val job = Job(request)
         synchronized(lock) {
             start(IntSize(request.width, request.canvasHeight))
@@ -290,14 +313,34 @@ private object CaptureSession {
             // One timeout per wedged scene, not one per fixture after it.
             retired = true
             throw IllegalStateException(
-                "The shared capture scene did not answer within ${ANSWER_TIMEOUT_SECONDS}s. The fixture " +
-                    "captured before this one in the same scene is the likely cause; the next fixture " +
-                    "gets a new scene. Turning viddik.sceneReuse off gives every fixture a scene of its own.",
+                "The shared capture scene did not answer within ${ANSWER_TIMEOUT_SECONDS}s. Either this " +
+                    "fixture never becomes idle — an animation that runs for as long as it is composed, " +
+                    "which wants @ViddikScreenshot(captureAtMillis = ...) — or the fixture captured before " +
+                    "it in the same scene wedged it; the next fixture gets a new scene. Turning " +
+                    "viddik.sceneReuse off gives every fixture a scene of its own.",
                 fatal,
             )
         }
         return answer.getOrThrow()
     }
+
+    /**
+     * A fixture captured at a moment of the clock gets a scene of its own, between two shared ones.
+     *
+     * Its picture is whatever its animation draws at that moment, and an animation may read the
+     * frame time itself rather than the time since it started — a spinner whose angle is the frame
+     * time modulo a turn does. In the shared scene the clock is wherever the fixtures before this one
+     * left it, so the same fixture would come out at another angle in a full run, under
+     * `--component` and in another shard. A fresh scene's clock starts from the same point every
+     * time, which is also what a run without reuse gives it, so the two paths agree. The shared
+     * scene is closed first and reopened by the next fixture, because two harnesses alive in one JVM
+     * wedge (#35); that costs one scene start per such fixture.
+     */
+    private fun captureAlone(request: CaptureRequest): BufferedImage =
+        synchronized(lock) {
+            stop()
+            request.captureInItsOwnScene()
+        }
 
     /**
      * Opens a scene for [size], reopening if the live one has another.
@@ -493,8 +536,9 @@ private fun renderSceneWithPerspective(
     surface.canvas.concat(PERSPECTIVE_NUDGE)
     // Compose Multiplatform 1.12 dropped ComposeScene.render(canvas, nanoTime) in favour of the two
     // halves it used to combine. The frame time it took is not missed here: the test harness has
-    // already been driven to idle by waitForIdle() before this runs, so there is no animation left to
-    // advance — all that is needed is a settled layout and one draw.
+    // already been driven to idle by waitForIdle() before this runs — or, for a fixture captured at
+    // a moment of a frozen clock, through every frame up to that moment — so there is no animation
+    // left to advance: all that is needed is a settled layout and one draw.
     scene.measureAndLayout()
     scene.draw(surface.canvas.asComposeCanvas())
     val encoded = checkNotNull(surface.makeImageSnapshot().encodeToData()) { "Screenshot encoding failed" }
