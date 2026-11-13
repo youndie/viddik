@@ -217,6 +217,11 @@ says which fixture is being captured, which is what to look at when an emulator 
   a suite of full-screen fixtures wants a taller profile.
 - Animations are switched off on the devices; a dark variant and a `@PreviewWrapper` theme arrive
   through the registry exactly as they do on the JVM.
+- A fixture with `captureAtMillis` ([fixtures.md](fixtures.md#content-that-never-settles-captureatmillis))
+  is captured as on the JVM: the clock stopped, the content set, the clock advanced by that moment. It gets
+  an activity of its own, one more activity launch per such fixture, because the fixtures that share one
+  share its clock too, and the moment would then depend on how many were captured before it. Without it a never-idle
+  fixture waits for Espresso's idling timeout and is reported as not captured.
 - The window takes no focus, and each fixture gets a composition of its own within it. A focused text
   field in one fixture would otherwise raise the keyboard, and the next fixture would be captured while
   the window was still resizing back.

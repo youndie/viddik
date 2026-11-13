@@ -443,7 +443,7 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     verifies through both on three OSes. Opt-in rather than a settle budget applied to everything: a
     fixture that unexpectedly never settles is a defect the timeout should keep reporting, and a
     budget would record it instead. The 120 s timeout's message now names this as the first suspect.
-    The Android matrix does not read the field yet.
+    The Android matrix reads it too, see `stageRunEnd` there.
   - **Sharding** (`viddik { shards = N }` → the `viddik.shards` KSP option, issue #35). The processor
     emits N `GeneratedViddikTests<k>` classes instead of one, each calling
     `dynamicTests(components, shard = k, shards = N)`, and the plugin sets `maxParallelForks = N` on
@@ -769,6 +769,17 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       than on 36. Before: 64 fixtures past 5% and 7 past 25%, with 31 and 34 agreeing against 36. After:
       2 and 0, and what tops the page is an AGSL shader on 31. When two columns agree against a third,
       suspect the harness first.
+    - **A fixture with `captureAtMillis` is a run of its own** (`stageRunEnd`): an activity whose clock is
+      frozen before anything is composed, the fixture put on stage *before* `setContent` (with the clock
+      frozen, `stage.current = index` afterwards would wait for a frame nobody advances), then
+      `advanceTimeBy(moment)`. The stage's clock is shared by every fixture on it and only moves forward, so
+      on it the moment would depend on how many fixtures ran first, the same reason the JVM side takes such a
+      fixture out of the shared scene. Android's `ComposeIdlingResource` has the JVM harness's shape: with
+      `autoAdvance` on it pumps up to 100 frames per check while the clock has awaiters, so a never-idle
+      fixture used to end in Espresso's idling timeout and in `failures.txt`; frozen, only layout counts. The
+      fixture is composed by `setContent` itself, so `started` is set before it, or a fixture throwing there
+      would read as the harness failing and end the run. `Feedback / Busy spinner` and `… again` in the
+      samples are one fixture at two places in the registry, and have to come out byte for byte the same.
     - **The capture is repeatable.** On the same renderer two complete runs were byte-identical on all
       811 captures of API 31 and of API 34, and a filtered run gave the same bytes as the full one (18 of
       18), so what a fixture looks like does not depend on what ran before it.
