@@ -81,6 +81,9 @@ class RegistryCompileTest {
                         qualifiedFunctionName = "$FIXTURE_PACKAGE.Labelled",
                         providerQualifiedName = "$FIXTURE_PACKAGE.Labels",
                         darkVariant = i % 100 == 7,
+                        // Spliced into the base call and the dark copy alike; a malformed literal
+                        // fails this compilation.
+                        captureAtMillis = 250L,
                     )
                 }
 
@@ -96,7 +99,16 @@ class RegistryCompileTest {
                 }
 
                 13 -> {
-                    ViddikEntry.Static(i.toString(), group, 400, -1, function, forceDark = true, tolerancePercent = 0.2)
+                    ViddikEntry.Static(
+                        i.toString(),
+                        group,
+                        400,
+                        -1,
+                        function,
+                        forceDark = true,
+                        tolerancePercent = 0.2,
+                        captureAtMillis = if (i % 100 == 13) 500L else null,
+                    )
                 }
 
                 else -> {

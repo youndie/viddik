@@ -63,8 +63,8 @@ render headless at all.
 Precedence per field is: an argument on `@ViddikScreenshot`, then the `@Preview` field, then viddik's
 default.
 
-`darkVariant` and `tolerancePercent` are viddik's own — `@Preview` has no counterpart for either, so
-those two are only ever read off `@ViddikScreenshot`.
+`darkVariant`, `tolerancePercent` and `captureAtMillis` are viddik's own — `@Preview` has no
+counterpart for any of them, so those are only ever read off `@ViddikScreenshot`.
 
 Note that `uiMode` and `darkVariant` mean different things: `uiMode` says *this* fixture is dark,
 `darkVariant = true` asks for a **second**, dark copy beside the light one. Setting both is an error
@@ -162,6 +162,40 @@ content):
 ```kotlin
 @ViddikScreenshot(name = "FullScreenBanner", group = "Screens", height = 800)
 ```
+
+## Content that never settles: `captureAtMillis`
+
+A capture normally waits until Compose is idle: every animation finished, nothing waiting for a frame.
+Some content never gets there — a busy button whose spinner turns on a `withFrameMillis` loop for as
+long as it is busy, a ticking clock, a progress bar drawn from the frame time. Waiting for it never
+ends, and the fixture fails after the shared scene's 120 s, or hangs in a scene of its own.
+
+Such a fixture names a moment of the test clock instead:
+
+```kotlin
+@ViddikScreenshot(name = "Save button - busy", group = "Buttons", captureAtMillis = 500)
+@Composable
+fun SaveButtonBusy() {
+    AppTheme { SaveButton(busy = true, onClick = {}) }
+}
+```
+
+The clock is stopped, the content is set, and the clock is advanced by exactly that much — in whole
+16 ms frames, so 500 is the frame at 512 — before the picture is taken. The clock is virtual, so the
+picture is the same on every run and every machine. Every animation in the fixture is at that moment:
+
+- finite ones too, so pick a moment after the ones that should be over (an enter fade, a wipe);
+- infinite transitions (`rememberInfiniteTransition`, an indeterminate progress indicator) run as
+  well, where a capture that waits for idle stops them;
+- the content's own clock starts where a fresh scene's does. A fixture with `captureAtMillis` always
+  gets a scene of its own, even with `sceneReuse` on, so an animation that reads the frame time
+  itself rather than the time since it started is drawn the same whatever was captured before it.
+  That costs one scene start per such fixture.
+
+Leave it unset everywhere else: a fixture that waits for idle shows each animation finished, which is
+what most states want, and a fixture that unexpectedly never settles is a bug the timeout should
+report rather than a picture to record. `captureComposable(captureAtMillis = …)` is the same for a
+hand-written test. The Android matrix ([android-matrix.md](android-matrix.md)) does not read it yet.
 
 ## Parameterized fixtures (`@PreviewParameter`)
 

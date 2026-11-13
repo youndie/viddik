@@ -27,6 +27,7 @@ internal sealed class ViddikEntry {
         val fontScale: Float = 1f,
         val tolerancePercent: Double? = null,
         val wrapperQualifiedName: String? = null,
+        val captureAtMillis: Long? = null,
     ) : ViddikEntry()
 
     data class Parameterized(
@@ -41,6 +42,7 @@ internal sealed class ViddikEntry {
         val fontScale: Float = 1f,
         val tolerancePercent: Double? = null,
         val wrapperQualifiedName: String? = null,
+        val captureAtMillis: Long? = null,
     ) : ViddikEntry()
 }
 
@@ -159,7 +161,7 @@ private fun addStatement(entry: ViddikEntry): CodeBlock =
                 entry.width,
                 entry.height,
                 entry.fontScale,
-                toleranceArgument(entry.tolerancePercent),
+                optionalArguments(entry.tolerancePercent, entry.captureAtMillis),
                 contentLambda,
             )
         }
@@ -196,7 +198,7 @@ private fun addStatement(entry: ViddikEntry): CodeBlock =
                 entry.width,
                 entry.height,
                 entry.fontScale,
-                toleranceArgument(entry.tolerancePercent),
+                optionalArguments(entry.tolerancePercent, entry.captureAtMillis),
                 baseContent,
             )
             if (entry.darkVariant) {
@@ -215,7 +217,7 @@ private fun addStatement(entry: ViddikEntry): CodeBlock =
                     entry.width,
                     entry.height,
                     entry.fontScale,
-                    toleranceArgument(entry.tolerancePercent),
+                    optionalArguments(entry.tolerancePercent, entry.captureAtMillis),
                     compositionLocalProvider,
                     localScreenshotDarkTheme,
                     paramCall,
@@ -236,6 +238,20 @@ private fun addStatement(entry: ViddikEntry): CodeBlock =
  */
 private fun toleranceArgument(tolerancePercent: Double?): CodeBlock =
     tolerancePercent?.let { CodeBlock.of("tolerancePercent·=·%L,·", it) } ?: CodeBlock.of("")
+
+/**
+ * A fixture's own `captureAtMillis`, spliced in the same way and for the same reason as
+ * [toleranceArgument]: only a fixture that asks for it names an argument older `viddik-annotations`
+ * does not have.
+ */
+private fun captureAtArgument(captureAtMillis: Long?): CodeBlock =
+    captureAtMillis?.let { CodeBlock.of("captureAtMillis·=·%LL,·", it) } ?: CodeBlock.of("")
+
+/** The arguments a fixture states only when it asks for them, in the order `ViddikComponent` declares them. */
+private fun optionalArguments(
+    tolerancePercent: Double?,
+    captureAtMillis: Long?,
+): CodeBlock = CodeBlock.of("%L%L", toleranceArgument(tolerancePercent), captureAtArgument(captureAtMillis))
 
 /**
  * Composes a fixture call inside its `@PreviewWrapper`, if it declared one.

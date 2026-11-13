@@ -44,6 +44,15 @@ package io.github.youndie.viddik.annotations
  *   that has started failing. The engine's 16-pixel floor still applies underneath, so this loosens a
  *   fixture rather than tightening it below a handful of pixels. `@Preview` has no counterpart, so
  *   this one is only ever read here.
+ * @param captureAtMillis capture this fixture at a fixed moment of the test clock instead of waiting
+ *   for it to become idle: the clock is stopped, the content is set, the clock is advanced by this
+ *   many milliseconds (rounded up to a whole 16 ms frame) and the scene is photographed. Unset by
+ *   default, and meant for content that never becomes idle — an animation that runs for as long as
+ *   it is composed, such as a busy spinner looping on `withFrameMillis` — which would otherwise time
+ *   out. Every animation in the fixture is at that moment, finite ones included, so pick a time after
+ *   the ones that should have finished; infinite transitions, which an idle capture stops, run too.
+ *   Such a fixture always gets a scene of its own, so its clock starts from the same point on every
+ *   run whatever was captured before it. `@Preview` has no counterpart.
  */
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.SOURCE)
@@ -54,4 +63,5 @@ public annotation class ViddikScreenshot(
     val height: Int = UNSPECIFIED,
     val darkVariant: Boolean = false,
     val tolerancePercent: Double = UNSPECIFIED_TOLERANCE,
+    val captureAtMillis: Long = UNSPECIFIED_CAPTURE_TIME,
 )

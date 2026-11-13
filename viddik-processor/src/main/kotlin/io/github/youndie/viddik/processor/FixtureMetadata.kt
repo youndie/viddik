@@ -13,6 +13,7 @@ internal data class ScreenshotArgs(
     val height: Int? = null,
     val darkVariant: Boolean = false,
     val tolerancePercent: Double? = null,
+    val captureAtMillis: Long? = null,
 )
 
 /** The fields of `androidx.compose.ui.tooling.preview.Preview` that mean something to viddik. */
@@ -38,6 +39,8 @@ internal data class FixtureMetadata(
     val fontScale: Float = 1f,
     /** This fixture's own diff budget, or null to be judged by whatever the run is set to. */
     val tolerancePercent: Double? = null,
+    /** The moment of the frozen test clock to capture at, or null to capture once idle. */
+    val captureAtMillis: Long? = null,
 )
 
 /**
@@ -74,7 +77,16 @@ internal fun resolveFixtures(
             )
         }
     }
-    val screenshot = rawScreenshot.copy(tolerancePercent = tolerance)
+    // The same once-per-function validation, for the same reason.
+    val captureAt = rawScreenshot.captureAtMillis?.takeIf { it != UNSPECIFIED_CAPTURE_TIME }
+    if (captureAt != null && captureAt < 0) {
+        onError(
+            "captureAtMillis = $captureAt is before the content is even set. It is how long the test " +
+                "clock runs after that, in milliseconds, so it has to be 0 or more.",
+        )
+        return emptyList()
+    }
+    val screenshot = rawScreenshot.copy(tolerancePercent = tolerance, captureAtMillis = captureAt)
 
     if (previews.isEmpty()) {
         return listOfNotNull(resolveOne(functionName, screenshot, preview = null, onError = onError, onWarn = onWarn))
@@ -154,6 +166,7 @@ private fun resolveOne(
         fontScale = preview?.fontScale ?: 1f,
         // Already normalized and validated by resolveFixtures; @Preview has no counterpart to fall back to.
         tolerancePercent = screenshot.tolerancePercent,
+        captureAtMillis = screenshot.captureAtMillis,
     )
 }
 
@@ -231,6 +244,7 @@ internal const val PREVIEW_UNSET_DP = -1
 // depend on: the processor runs on the build's own classpath, not the consumer's.
 internal const val UNSPECIFIED = Int.MIN_VALUE
 internal const val UNSPECIFIED_TOLERANCE = -1.0
+internal const val UNSPECIFIED_CAPTURE_TIME = -1L
 internal const val AUTO_HEIGHT = -1
 internal const val DEFAULT_WIDTH = 400
 internal const val DEFAULT_GROUP = "Default"
