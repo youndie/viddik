@@ -195,7 +195,8 @@ picture is the same on every run and every machine. Every animation in the fixtu
 Leave it unset everywhere else: a fixture that waits for idle shows each animation finished, which is
 what most states want, and a fixture that unexpectedly never settles is a bug the timeout should
 report rather than a picture to record. `captureComposable(captureAtMillis = …)` is the same for a
-hand-written test. The Android matrix ([android-matrix.md](android-matrix.md)) does not read it yet.
+hand-written test. The Android matrix ([android-matrix.md](android-matrix.md)) captures such a fixture
+the same way, at the same moment, on every level.
 
 ## Parameterized fixtures (`@PreviewParameter`)
 

@@ -168,11 +168,19 @@ public object ViddikAndroidCapture {
         var next = 0
         while (next < components.size) {
             var started = NO_FIXTURE
+            // A fixture captured at a moment of the clock is a run of its own: see stageRunEnd.
+            val end = stageRunEnd(components, next)
+            val moment = components[next].captureAtMillis
             try {
                 runAndroidComposeUiTest<ComponentActivity>(
                     effectContext = UnconfinedTestDispatcher(),
                     testTimeout = RUN_TIMEOUT,
                 ) {
+                    // Frozen before anything is composed, so the clock this fixture's frames are measured on
+                    // starts where it does for every such fixture. With autoAdvance on, waitForIdle pumps
+                    // frames for as long as something awaits one, which for an animation with no end is
+                    // until Espresso's idling timeout; frozen, a parked frame awaiter is not work.
+                    if (moment != null) mainClock.autoAdvance = false
                     val stage = Stage(components)
                     runOnIdle {
                         val host = checkNotNull(activity)
@@ -189,8 +197,16 @@ public object ViddikAndroidCapture {
                         // by luck.
                         host.window.addFlags(FLAG_NOT_FOCUSABLE)
                     }
+                    // A timed fixture is on stage before the content is set, as on the JVM: with the clock
+                    // frozen, putting it there later would wait for a frame nobody advances.
+                    // It is composed by setContent itself, so a fixture that throws there is already the
+                    // one on stage, and fails alone rather than taking the run with it.
+                    if (moment != null) {
+                        started = next
+                        stage.current = next
+                    }
                     setContent { stage.Content() }
-                    while (next < components.size) {
+                    while (next < end) {
                         started = next++
                         try {
                             captureOne(stage, started, dir)
@@ -201,7 +217,8 @@ public object ViddikAndroidCapture {
                             unfit++
                         }
                         started = NO_FIXTURE
-                        clearStage(stage)
+                        // A timed fixture's activity ends with it, and nothing follows it on this stage.
+                        if (moment == null) clearStage(stage)
                     }
                 }
             } catch (
@@ -211,6 +228,7 @@ public object ViddikAndroidCapture {
                 // the run has to say so rather than loop on it.
                 if (started == NO_FIXTURE) throw broken
                 fail(components[started], broken)
+                next = maxOf(next, started + 1)
             }
         }
         if (unfit > 0) Log.i(LOG_TAG, "$unfit fixture(s) do not fit this device; see $UNFIT_FILE")
@@ -276,7 +294,15 @@ public object ViddikAndroidCapture {
         val component = stage.component(index)
         // With one test for the whole registry, this line is what says how far a run that died had got.
         Log.i(LOG_TAG, "Capturing ${index + 1}: ${component.group} - ${component.name}")
-        runOnIdle { stage.current = index }
+        val moment = component.captureAtMillis
+        if (moment == null) {
+            runOnIdle { stage.current = index }
+        } else {
+            // Already on stage, the clock frozen since before setContent (captureAll): run its frames up to
+            // the moment, in whole 16 ms frames, each with its recomposition.
+            check(stage.current == index && !mainClock.autoAdvance) { "A timed fixture shares a stage" }
+            mainClock.advanceTimeBy(moment)
+        }
         waitForIdle()
 
         // A Dialog is a window of its own, and it is the capture — the same rule CaptureEngine follows.
