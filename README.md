@@ -80,7 +80,8 @@ caught and the cross-OS goldens still pass ([how a comparison decides](docs/port
 ## What it does
 
 - **Fixtures** — `@ViddikScreenshot`, or `@Preview` metadata read off the same function, multipreviews,
-  `@PreviewParameter`, dark variants, one theme for all of them through `@PreviewWrapper`.
+  `@PreviewParameter`, dark variants, one theme for all of them through `@PreviewWrapper`, and a
+  fixed moment of the clock for content that never settles (`captureAtMillis`).
   [docs/fixtures.md](docs/fixtures.md)
 - **Recording and verifying** — a record writes only the goldens a verification would reject;
   `--component` selects one fixture; one scene, two forks and a KSP that ignores body edits by

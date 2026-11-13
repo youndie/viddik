@@ -110,14 +110,15 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     because this module names no lifecycle API. The per-target compilations keep `-Werror`. The
     exception removes itself when material3 gets a version matching `compose-multiplatform`.
   - `ViddikScreenshot` (`annotations/ViddikScreenshot.kt`) — the marker annotation (`name`, `group`,
-    `width`, `height`, `darkVariant`, `tolerancePercent`). Every size parameter defaults to `UNSPECIFIED`
+    `width`, `height`, `darkVariant`, `tolerancePercent`, `captureAtMillis`). Every size parameter defaults to `UNSPECIFIED`
     (`Int.MIN_VALUE`, in `ViddikComponent.kt`) rather than to its old literal, because KSP substitutes
     defaults before the processor sees them: without a value nobody would write by hand, "omitted" and
     "written out as 400" are indistinguishable, and falling back to `@Preview` would override a
     deliberate 400. Resolution order per field is argument here → `@Preview` field → viddik default
     (400 / `AUTO_HEIGHT` / `"Default"` / the function's own name). `tolerancePercent` has the same
     shape for the same reason (`UNSPECIFIED_TOLERANCE = -1.0`, a share of pixels nobody writes) but no
-    `@Preview` field to fall back to — like `darkVariant`, it is viddik's own.
+    `@Preview` field to fall back to — like `darkVariant`, it is viddik's own. `captureAtMillis` too
+    (`UNSPECIFIED_CAPTURE_TIME = -1L`), see "Capture at a moment of the clock" below.
   - `ViddikComponent` (`annotations/ViddikComponent.kt`) — runtime data class the processor emits into
     the generated registry (`name`, `group`, `width`, `height`, `content: @Composable () -> Unit`).
     `AUTO_HEIGHT = -1` lives here too.
@@ -413,6 +414,36 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       can know what else shares the JVM. This module's own `jvmTest` is that case — it mixes
       `RerootingCanaryTest`'s harness with the generated fixtures, and would wedge if the engine
       defaulted to reuse.
+  - **Capture at a moment of the clock** (`captureAtMillis` on `@ViddikScreenshot`,
+    `ViddikComponent` and `captureComposable`). Content that is never idle — a busy spinner looping on
+    `withFrameMillis` for as long as it is composed — could not be captured: with `autoAdvance` on,
+    the harness's `waitForIdle` advances a frame while `frameRecomposer.hasPendingWork()`, and a
+    parked frame awaiter is pending work forever. The shared scene timed out after 120 s (on 0.7.0
+    taking the rest of the shard with it, #62); a scene of its own spun with no limit at all
+    (`testTimeout` is infinite). Measured against CMP 1.12.1's `SkikoComposeUiTest`, three facts the
+    shape rests on:
+    - **A frozen clock does not wait for frame awaiters.** `isIdle()` only consults
+      `hasPendingWork()` when `mainClock.autoAdvance` is on, so with it off `setContent` returns once
+      the first composition is laid out, and `advanceTimeBy` runs the render loop's frames — one per
+      16 ms, each with its recomposition — up to the moment. `autoAdvance` is set on *every* capture
+      (`= captureAt == null`), so nothing frozen can reach the next fixture of a scene.
+    - **`advanceTimeBy` rounds up to a whole frame**, and a fresh scene's clock starts at 0 with
+      frames at 16 ms multiples: 500 draws the frame at 512. `ViddikEndlessAnimationTest` pins the
+      512, since a harness that starts or steps its clock otherwise moves every such golden.
+    - **The harness's `InfiniteAnimationPolicy` cancels infinite transitions only while
+      `autoAdvance` is on.** A frozen capture therefore draws `rememberInfiniteTransition` at its
+      moment rather than stopped; raw `withFrameMillis` loops were never covered by the policy at
+      all, which is why the defect existed.
+    **A timed fixture always gets a scene of its own** (`CaptureSession.captureAlone`: stop the shared
+    one, capture through `captureInItsOwnScene`, let the next fixture reopen). The spinner that
+    prompted this draws the frame time itself (angle = time modulo a turn), not the time since it
+    started, so in a shared scene its picture depended on what was captured before it — measured with
+    the routing removed: 97 px apart from a scene of its own on the *first* capture under reuse, before
+    anything else ran. With it, both paths are byte-identical and the `Demo/Endless spinner` golden
+    verifies through both on three OSes. Opt-in rather than a settle budget applied to everything: a
+    fixture that unexpectedly never settles is a defect the timeout should keep reporting, and a
+    budget would record it instead. The 120 s timeout's message now names this as the first suspect.
+    The Android matrix does not read the field yet.
   - **Sharding** (`viddik { shards = N }` → the `viddik.shards` KSP option, issue #35). The processor
     emits N `GeneratedViddikTests<k>` classes instead of one, each calling
     `dynamicTests(components, shard = k, shards = N)`, and the plugin sets `maxParallelForks = N` on
@@ -1289,7 +1320,8 @@ The 1.11 → 1.12 port (viddik 0.2.0) was two independent breakages, both in `Ca
 
 - **`ComposeScene.render(canvas, nanoTime)` is gone**, split into `measureAndLayout()` + `draw(canvas)`.
   The frame time it used to take isn't missed: `waitForIdle()` has already settled the harness before
-  the capture runs, so there is no animation left to advance.
+  the capture runs (or, with `captureAtMillis`, the frozen clock has been advanced to the moment), so
+  there is no animation left to advance.
 - **`org.jetbrains.skia.Matrix44` became a value class** in skiko 0.150.1, and its array constructor
   is no longer public — `Matrix44(*floatArrayOf(...))` stopped compiling. Spelling the sixteen floats
   as positional arguments works against both the old vararg constructor and the new one.
