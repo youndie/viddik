@@ -61,6 +61,27 @@ module's ordinary test task. Goldens are portable once the fixtures bundle a fon
 `./gradlew build` on every machine that did not record them. Turn the check on with
 `viddik { verifyOnCheck = true }`, or for one run with `./gradlew check -Pviddik.verify`.
 
+## No windows, no Dock icons
+
+A capture renders offscreen, so the JVMs that record, verify and measure design parity start with
+`java.awt.headless=true` (`headless`, on by default). Without it each test fork initialises AWT as a
+desktop application: on macOS a Dock icon per fork and, every time a fork starts, a fullscreen app on
+another Space is left for the desktop; on Windows the forks show up in the taskbar. Measured on macOS
+with `lsappinfo`: a fork without the property is a `Foreground` application, a headless one is not
+registered at all. Linux CI with no `DISPLAY` was headless already, so goldens are unaffected.
+
+```kotlin
+viddik {
+    headless = false  // a fixture touches AWT itself and gets a HeadlessException
+}
+```
+
+A fixture that reads the AWT clipboard, the screen size or embeds a `ComposePanel` needs `false`. The
+forks then still start with `apple.awt.UIElement=true`, which keeps them out of the Dock on macOS.
+`viddikShowroom` opens a real window and is not affected by either. A hand-written test calling the
+engine without the plugin gets the same effect from `systemProperty("java.awt.headless", "true")` on
+its `Test` task.
+
 ## Speed
 
 Three settings, all on by default in the plugin.

@@ -78,6 +78,10 @@ tasks.withType<Test>().configureEach {
     // draws them and the check has the right font to read. Eating our own dog food: a fixture that
     // starts drawing a character Roboto lacks fails here rather than on a contributor's other OS.
     systemProperty("viddik.glyphCheck", "true")
+    // What the plugin's `headless` default puts on a consumer's screenshot JVMs, here so that the
+    // three-OS run of this suite is also the proof that captures need no window system.
+    systemProperty("java.awt.headless", "true")
+    systemProperty("apple.awt.UIElement", "true")
     // `-PsceneReuse=true` runs the whole suite against one shared scene (#40). The two paths have to
     // produce the same goldens, and the only way to keep that true is to be able to run both.
     providers.gradleProperty("sceneReuse").orNull?.let { systemProperty("viddik.sceneReuse", it) }
