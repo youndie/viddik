@@ -98,6 +98,17 @@ public interface ViddikExtension {
     public val locale: Property<String>
 
     /**
+     * Whether the JVMs that record, verify and measure design parity run with `java.awt.headless`.
+     * **`true` by default**: a capture renders offscreen and needs no window system, but a JVM that
+     * initialises AWT on macOS becomes a foreground application — a Dock icon per fork, and a
+     * fullscreen app on another Space is pushed aside every time a fork starts; on Windows the forks
+     * appear in the taskbar. `false` is for a fixture that touches AWT itself (the clipboard, the
+     * screen size) and gets a `HeadlessException`; on macOS the forks then still run as agents
+     * (`apple.awt.UIElement`), with no Dock icon. The showroom is a real window and is not affected.
+     */
+    public val headless: Property<Boolean>
+
+    /**
      * Where the design references live — PNGs exported from the design the fixtures were built to,
      * named exactly like the goldens (`<group>_<name>.png`), relative to the module directory.
      * Defaults to `design/` under [snapshotsDir]. Becomes the `viddik.designDir` system property.

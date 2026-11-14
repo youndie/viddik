@@ -626,6 +626,9 @@ public class ViddikPlugin : Plugin<Project> {
                 task.systemProperties(localeSystemProperties(tag))
                 task.inputs.property("viddikLocale", tag)
             }
+            // Offscreen captures need no window system, and a JVM that starts one on macOS takes the
+            // user out of a fullscreen app; see ViddikHeadless.kt.
+            task.systemProperties(windowlessSystemProperties(extension.headless.get()))
 
             if (!generateTests) {
                 task.doFirst {
@@ -652,6 +655,7 @@ public class ViddikPlugin : Plugin<Project> {
         shards.convention(2)
         sceneReuse.convention(true)
         locale.convention(DEFAULT_LOCALE)
+        headless.convention(true)
         kspDeclarationSnapshot.convention(true)
         verifyOnCheck.convention(false)
         excludeFromTestTask.convention(true)

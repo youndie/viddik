@@ -1180,6 +1180,19 @@ included, and with `user.language` on the command line the JDK stops filling in 
 separate `user.language.format`, so formatting follows. The engine's own messages format numbers with
 `Locale.ROOT` regardless — a German JVM printed `24,08%`.
 
+**The screenshot JVMs are headless** (`viddik { headless }`, `true` by default; `ViddikHeadless.kt`,
+`ViddikHeadlessTest`). A capture never opens a window, but the JVM initialises AWT, and on macOS that
+makes every test fork a foreground application: a Dock icon each, and a user in a fullscreen app on
+another Space is pulled out to the desktop whenever a fork starts (Windows: taskbar entries). Measured
+14.11.2026 with `lsappinfo list` polled during `:viddik-testing-core:jvmTest`: no property — the fork is
+`type="Foreground"`; `-Dapple.awt.UIElement=true` — `type="UIElement"`; `-Djava.awt.headless=true` — no
+entry at all. The whole of this module's jvmTest passed headless on macOS (and was already headless on
+Linux CI, where the JDK goes headless by itself without `DISPLAY`); this module's own `Test` tasks set
+both properties so the three-OS run keeps proving it. `apple.awt.UIElement` is set with headless off
+too, for a consumer whose fixtures touch AWT (`HeadlessException` from the clipboard or the screen
+size): its forks still stay out of the Dock. `viddikShowroom` is a `JavaExec` with a real window and
+gets neither.
+
 ### The hole: text inside a filtered layer
 
 Portability is solved for everything the scene canvas can reach, and there is exactly one place it
