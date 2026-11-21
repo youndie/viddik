@@ -7,6 +7,9 @@ import android.graphics.Color
 import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
+import android.opengl.EGL14
+import android.opengl.EGLConfig
+import android.opengl.GLES20
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -714,15 +717,66 @@ public object ViddikAndroidCapture {
                 density = metrics.density,
                 widthPx = metrics.widthPixels,
                 heightPx = metrics.heightPixels,
+                fingerprint = Build.FINGERPRINT,
+                renderer = glRenderer(),
             ),
         )
     }
+
+    /**
+     * What draws on this device, as OpenGL names it: on an emulator the host's GPU or the software
+     * renderer, which disagree on ~0.4% of a capture's pixels. A level's baseline is only worth comparing
+     * with when this is the same (#81). Null when no context could be had.
+     *
+     * A throwaway pbuffer context, released after; the display is left initialised, since the app's own
+     * renderer shares it.
+     */
+    private fun glRenderer(): String? =
+        runCatching {
+            val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+            val version = IntArray(2)
+            check(EGL14.eglInitialize(display, version, 0, version, 1))
+            val attributes =
+                intArrayOf(
+                    EGL14.EGL_RENDERABLE_TYPE,
+                    EGL14.EGL_OPENGL_ES2_BIT,
+                    EGL14.EGL_SURFACE_TYPE,
+                    EGL14.EGL_PBUFFER_BIT,
+                    EGL14.EGL_NONE,
+                )
+            val configs = arrayOfNulls<EGLConfig>(1)
+            val count = IntArray(1)
+            check(EGL14.eglChooseConfig(display, attributes, 0, configs, 0, 1, count, 0) && count[0] > 0)
+            val context =
+                EGL14.eglCreateContext(
+                    display,
+                    configs[0],
+                    EGL14.EGL_NO_CONTEXT,
+                    intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE),
+                    0,
+                )
+            val surface =
+                EGL14.eglCreatePbufferSurface(
+                    display,
+                    configs[0],
+                    intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE),
+                    0,
+                )
+            try {
+                check(EGL14.eglMakeCurrent(display, surface, surface, context))
+                GLES20.glGetString(GLES20.GL_RENDERER)
+            } finally {
+                EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
+                EGL14.eglDestroySurface(display, surface)
+                EGL14.eglDestroyContext(display, context)
+            }
+        }.getOrNull()
 
     /** A wedged run should end in a failure and not in a CI timeout; no real suite comes near this. */
     private val RUN_TIMEOUT = 4.hours
 }
 
-/** Hand-written rather than a JSON library: six fields, and nothing else in the test APK needs one. */
+/** Hand-written rather than a JSON library: a few fields, and nothing else in the test APK needs one. */
 internal fun deviceJson(
     sdkInt: Int,
     release: String,
@@ -730,6 +784,8 @@ internal fun deviceJson(
     density: Float,
     widthPx: Int,
     heightPx: Int,
+    fingerprint: String? = null,
+    renderer: String? = null,
 ): String =
     buildString {
         append("{")
@@ -739,6 +795,10 @@ internal fun deviceJson(
         append("\"density\":").append(density).append(',')
         append("\"widthPx\":").append(widthPx).append(',')
         append("\"heightPx\":").append(heightPx)
+        // The system image's build and the renderer: what a level's baseline has to share with a capture
+        // for the two to be compared (#81).
+        fingerprint?.let { append(",\"fingerprint\":").append(it.jsonString()) }
+        renderer?.let { append(",\"renderer\":").append(it.jsonString()) }
         append("}\n")
     }
 

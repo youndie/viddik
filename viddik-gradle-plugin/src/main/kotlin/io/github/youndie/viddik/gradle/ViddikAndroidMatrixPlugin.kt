@@ -89,6 +89,7 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
         extension.apiLevels.convention(DEFAULT_API_LEVELS)
         extension.device.convention(DEFAULT_DEVICE)
         extension.systemImageSource.convention(DEFAULT_IMAGE_SOURCE)
+        extension.baselineDir.convention(target.layout.projectDirectory.dir(DEFAULT_BASELINE_DIR))
 
         // `-PviddikMatrix.apiLevels=34` beats the build script, for a quick run on one emulator.
         val apiLevels: Provider<List<Int>> =
@@ -190,6 +191,10 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
                     referenceApi.get().toString(),
                     "--project",
                     target.path,
+                    "--baseline",
+                    extension.baselineDir
+                        .get()
+                        .asFile.path,
                 )
                 task.outputs.dir(reportDir)
                 // The captures are on the emulators until a run pulls them back, so there is nothing
@@ -210,6 +215,15 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
                     }
                 }
             }
+
+        target.tasks.register(BASELINE_TASK, ViddikMatrixBaselineTask::class.java) { task ->
+            task.group = LifecycleBasePlugin.VERIFICATION_GROUP
+            task.description =
+                "Makes the last kept run of each level its baseline, which the report compares every capture with."
+            task.kept.from(managedDir, connectedDir)
+            task.baselines.set(extension.baselineDir)
+            task.levels.set(apiLevels)
+        }
 
         target.tasks.register(MATRIX_TASK) { task ->
             task.group = LifecycleBasePlugin.VERIFICATION_GROUP
@@ -475,6 +489,8 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
         const val EXTENSION_NAME = "viddikAndroidMatrix"
         const val MATRIX_TASK = "viddikAndroidMatrix"
         const val REPORT_TASK = "viddikAndroidMatrixReport"
+        const val BASELINE_TASK = "viddikAndroidMatrixBaseline"
+        const val DEFAULT_BASELINE_DIR = "src/viddikMatrixBaselines"
 
         /** Has to match what viddik-matrix-report writes; the two modules share no code. */
         const val REPORT_FAILURE_FILE = "failure.txt"

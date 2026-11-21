@@ -1,5 +1,6 @@
 package io.github.youndie.viddik.gradle
 
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 
@@ -38,4 +39,11 @@ public interface ViddikAndroidMatrixExtension {
 
     /** The column every other one is compared with. Default: the highest of [apiLevels]. */
     public val referenceApi: Property<Int>
+
+    /**
+     * Where `viddikAndroidMatrixBaseline` keeps each level's baseline, and where the report looks for them.
+     * Default `src/viddikMatrixBaselines`. Committing it multiplies the PNGs by the number of levels; a CI
+     * artifact restored here before the run works as well.
+     */
+    public val baselineDir: DirectoryProperty
 }
