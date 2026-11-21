@@ -357,6 +357,14 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       `diffImage`, and the bins are allocated by the first mismatched pixel, so a comparison that
       matches pays nothing. 16 px keeps a changed word one region and two buttons a screen apart two.
       `summary.json` (verify and matrix) lists the 16 largest and counts the rest.
+    - **`DiffCrop`, the change at a size it can be read at** (#79). Regions within `CROP_JOIN` (48 px)
+      of each other share a box, at most `MAX_CROPS` (4) boxes with the rest joining the nearest, so
+      every changed pixel is in some panel; each box plus `CROP_MARGIN` (16 px) becomes one row of
+      expected | actual | diff, scaled up by a whole factor (up to 8) when its shorter side is under
+      96 px. `verify` writes it as `_CROP.png` beside the other three (and deletes it with them), the
+      matrix report as `<slug>/crop/<file>` for every cell with a diff. The reason for it is the
+      reader: a 1080×2400 pair scaled down to fit a viewer, or a vision model's input, loses exactly the
+      one- or two-pixel changes the budget above exists to catch.
   - **Per-fixture tolerance** (0.3.1). `ViddikComponent.tolerancePercent: Double?` carries what
     `@ViddikScreenshot(tolerancePercent = ...)` asked for, and `ViddikEngine.verify` resolves
     component → `viddik.tolerancePercent` system property → `DEFAULT_TOLERANCE_PERCENT` in its own

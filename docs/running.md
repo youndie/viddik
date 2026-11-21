@@ -9,8 +9,11 @@ Goldens go to `src/<test source set>/snapshots/` (`snapshotsDir` changes it). A 
 writes three files to `build/reports/screenshots/` (`reportsDir`): `<group>_<name>_DIFF.png`, every
 mismatched pixel in red; `_ACTUAL.png`, what the fixture renders now; and `_EXPECTED.png`, a copy of
 the golden. The diff says where the change is and paints over it, so the other two are how to see
-what it is, without a record that overwrites the golden. A fixture that passes removes the three
-files an earlier failure left.
+what it is, without a record that overwrites the golden. A fourth, `_CROP.png`, is the one to open
+first: the changed part only, the golden, the render and the diff side by side at 1:1 (scaled up when
+the change is tiny), one row per group of nearby changes — on a phone-sized screen a pixel or two is
+invisible once a viewer scales the full images down. A fixture that passes removes the files an
+earlier failure left.
 Recording does not validate anything — look at what it wrote before committing it.
 
 The same verification as data, for a script, a CI step or an agent: every fixture it compares leaves
@@ -20,7 +23,7 @@ an entry in `build/reports/screenshots/results/<group>_<name>.json`, and the run
 mismatched and pronounced pixel counts, the share, the largest channel delta, the `regions` that
 changed (rectangles, largest first: one over a button means the button changed, hundreds over every
 line mean the glyphs did), the thresholds that decided it and where the tolerance came from
-(`fixture`, `run`, `default`), the paths of the three PNGs above, and `verifiedAt`. A shard or a
+(`fixture`, `run`, `default`), the paths of the PNGs above, and `verifiedAt`. A shard or a
 `--component` run replaces only the entries of the fixtures it ran; an entry whose fixture the module no
 longer has is dropped.
 

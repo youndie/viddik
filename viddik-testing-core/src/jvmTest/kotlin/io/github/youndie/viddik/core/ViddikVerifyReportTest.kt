@@ -50,6 +50,8 @@ class ViddikVerifyReportTest {
         assertEquals(RED_ARGB, actual.getRGB(WIDTH / 2, HEIGHT / 2), "_ACTUAL.png is the render, not the diff")
         assertArrayEquals(golden.readBytes(), File(reports, "${STEM}_EXPECTED.png").readBytes())
         assertTrue(File(reports, "${STEM}_DIFF.png").exists())
+        assertTrue(File(reports, "${STEM}_CROP.png").exists(), "the change at 1:1 goes beside them")
+        assertTrue(failure.message!!.contains("${STEM}_CROP.png"), failure.message)
         assertTrue(failure.message!!.contains("${STEM}_ACTUAL.png"), failure.message)
     }
 
@@ -58,7 +60,7 @@ class ViddikVerifyReportTest {
         @TempDir dir: File,
     ) {
         val reports = File(dir, "reports").apply { mkdirs() }
-        val stale = listOf("_DIFF.png", "_ACTUAL.png", "_EXPECTED.png").map { File(reports, STEM + it) }
+        val stale = listOf("_DIFF.png", "_ACTUAL.png", "_EXPECTED.png", "_CROP.png").map { File(reports, STEM + it) }
         stale.forEach { it.writeText("yesterday") }
         verify(dir, record = true)
 
@@ -110,6 +112,7 @@ class ViddikVerifyReportTest {
         assertTrue("\"pronouncedPixels\": ${WIDTH / 2 * HEIGHT}" in failed, failed)
         assertTrue("{\"x\": 0, \"y\": 0, \"width\": ${WIDTH / 2}, \"height\": $HEIGHT" in failed, failed)
         assertTrue("${STEM}_ACTUAL.png" in failed, failed)
+        assertTrue("${STEM}_CROP.png" in failed, failed)
 
         // An entry of a fixture the module no longer has is dropped, not summarised forever.
         File(reports, "results/Gone_Fixture.json").writeText("{\"status\": \"match\"}")

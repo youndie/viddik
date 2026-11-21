@@ -1,5 +1,6 @@
 package io.github.youndie.viddik.matrix
 
+import io.github.youndie.viddik.core.DiffCrop
 import io.github.youndie.viddik.core.DiffRegion
 import io.github.youndie.viddik.core.ImageDiffer
 import java.io.File
@@ -21,14 +22,24 @@ public fun writeReport(
 ) {
     outputDir.deleteRecursively()
     outputDir.mkdirs()
-    for (device in matrix.devices) File(outputDir, "${device.slug}/diff").mkdirs()
+    for (device in matrix.devices) {
+        File(outputDir, "${device.slug}/diff").mkdirs()
+        File(outputDir, "${device.slug}/crop").mkdirs()
+    }
     for (row in matrix.rows) {
         for ((slug, cell) in row.cells) {
             cell.image?.copyTo(File(outputDir, "$slug/${row.fileName}"), overwrite = true)
             val against = cell.diffAgainst
             if (against != null && cell.image != null) {
-                val diff = ImageDiffer.diff(read(against), read(cell.image)).diffImage
-                ImageIO.write(diff, "png", File(outputDir, "$slug/diff/${row.fileName}"))
+                val reference = read(against)
+                val capture = read(cell.image)
+                val diff = ImageDiffer.diff(reference, capture)
+                ImageIO.write(diff.diffImage, "png", File(outputDir, "$slug/diff/${row.fileName}"))
+                // The change at 1:1 beside the reference (#79): on a phone-sized capture the diff above
+                // is too large to see a pixel or two in once a viewer scales it down.
+                DiffCrop.render(reference, capture, diff)?.let {
+                    ImageIO.write(it, "png", File(outputDir, "$slug/crop/${row.fileName}"))
+                }
             }
         }
     }
@@ -254,6 +265,7 @@ private fun html(matrix: Matrix): String =
                 append("<span class=\"tag ${cell.status}\">${describe(cell, matrix, row, device).escape()}</span>")
                 if (cell.diffAgainst != null) {
                     append(" <a href=\"${"${device.slug}/diff/${row.fileName}".escape()}\">diff</a>")
+                    append(" <a href=\"${"${device.slug}/crop/${row.fileName}".escape()}\">crop</a>")
                 }
                 append("</td>")
             }
@@ -372,7 +384,8 @@ private fun json(matrix: Matrix): String =
                             "\"pronouncedPixels\": ${cell.pronouncedPixels}, " +
                             "\"regions\": ${regionsJson(cell.regions)}, " +
                             "\"missing\": ${cell.missing?.quoted() ?: "null"}, " +
-                            "\"reason\": ${cell.reason?.quoted() ?: "null"}}"
+                            "\"reason\": ${cell.reason?.quoted() ?: "null"}, " +
+                            "\"crop\": ${if (cell.diffAgainst != null) "$slug/crop/${row.fileName}".quoted() else "null"}}"
                     }
                 val max = "%.4f".format(Locale.ROOT, row.maxMismatchPercent)
                 "    {\"file\": ${row.fileName.quoted()}, \"title\": ${row.title.quoted()}, " +

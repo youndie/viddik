@@ -53,6 +53,7 @@ internal object VerifyReport {
         val diffFile: File? = null,
         val actualFile: File? = null,
         val expectedFile: File? = null,
+        val cropFile: File? = null,
     )
 
     fun write(
@@ -137,7 +138,8 @@ internal object VerifyReport {
             append("\"files\": {")
             append("\"diff\": ${entry.diffFile.pathJson()}, ")
             append("\"actual\": ${entry.actualFile.pathJson()}, ")
-            append("\"expected\": ${entry.expectedFile.pathJson()}}")
+            append("\"expected\": ${entry.expectedFile.pathJson()}, ")
+            append("\"crop\": ${entry.cropFile.pathJson()}}")
             append("}")
         }
 

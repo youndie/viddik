@@ -81,7 +81,7 @@ viddik {
 | option | default | what it does |
 |---|---|---|
 | `snapshotsDir` | `src/<test source set>/snapshots` | where the goldens live |
-| `reportsDir` | `build/reports/screenshots` | where a failed comparison writes its `_DIFF.png`, `_ACTUAL.png` and `_EXPECTED.png` |
+| `reportsDir` | `build/reports/screenshots` | where a failed comparison writes its `_DIFF.png`, `_ACTUAL.png`, `_EXPECTED.png` and `_CROP.png`, and every comparison its entry in `summary.json` |
 | `tolerancePercent` | 0.05 | share of pixels allowed to differ ([portability.md](portability.md#how-a-comparison-decides)) |
 | `channelTolerance` | 2 | how far a channel may differ with the pixel still counting as equal |
 | `minMismatchedPixels` | 16 | the pixel floor; 0 turns it off |
