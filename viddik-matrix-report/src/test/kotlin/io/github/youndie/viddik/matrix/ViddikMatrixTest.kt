@@ -71,6 +71,31 @@ class ViddikMatrixTest {
         assertEquals(50.0, cells.getValue("api31").mismatchPercent)
         assertEquals(CellStatus.SIZE, cells.getValue("api28").status)
         assertTrue(matrix.rows.single().diverges)
+        assertEquals(400, cells.getValue("api31").pronouncedPixels)
+        assertEquals(listOf(40 to 10), cells.getValue("api31").regions.map { it.width to it.height })
+        assertEquals(emptyList(), cells.getValue("api34").regions)
+    }
+
+    @Test
+    fun `the summary says where a cell differs and why one is empty`() {
+        device(36).apply {
+            File(this, "fixtures.txt").writeText("A.png\tGroup - A\nB.png\tGroup - B\n")
+            png("A.png")
+            png("B.png")
+        }
+        device(31).apply {
+            File(this, "fixtures.txt").writeText("A.png\tGroup - A\nB.png\tGroup - B\n")
+            File(this, "failures.txt").writeText("B.png\tboom\n")
+            png("A.png") { image -> for (x in 0 until 8) for (y in 0 until 4) image.setRGB(x, y, Color.BLACK.rgb) }
+        }
+        val out = File(root, "report")
+
+        writeReport(buildMatrix(listOf(File(root, "pulled"))), out)
+
+        val json = File(out, "summary.json").readText()
+        assertTrue("\"pronouncedPixels\": 32" in json, json)
+        assertTrue("{\"x\": 0, \"y\": 0, \"width\": 8, \"height\": 4, \"pixels\": 32}" in json, json)
+        assertTrue("\"missing\": \"refused\", \"reason\": \"boom\"" in json, json)
     }
 
     @Test

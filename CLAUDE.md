@@ -351,6 +351,12 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       argument — because what it pays for is the filtered-layer residue, which is pronounced. The
       matrix report's `matches()` takes the default too, so a cell with a small but pronounced
       difference from its reference is `DIFFERS`, not `SAME`.
+    - **Where it changed: `DiffResult.regions`** (#80). Mismatched pixels are binned into
+      `REGION_CELL` (16 px) cells as the differ meets them, each cell keeping its exact bounding box,
+      and cells touching each other (diagonals too) make one `DiffRegion`, largest first. Lazy, like
+      `diffImage`, and the bins are allocated by the first mismatched pixel, so a comparison that
+      matches pays nothing. 16 px keeps a changed word one region and two buttons a screen apart two.
+      `summary.json` (verify and matrix) lists the 16 largest and counts the rest.
   - **Per-fixture tolerance** (0.3.1). `ViddikComponent.tolerancePercent: Double?` carries what
     `@ViddikScreenshot(tolerancePercent = ...)` asked for, and `ViddikEngine.verify` resolves
     component → `viddik.tolerancePercent` system property → `DEFAULT_TOLERANCE_PERCENT` in its own
@@ -532,6 +538,16 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       artifact, so it has to be self-contained. `verify` deletes this fixture's three files before
       comparing, per fixture rather than the whole directory, because a shard or a `--component` run
       sees only some fixtures and must not wipe another fork's report. `ViddikVerifyReportTest`.
+    - **`summary.json`, the same verification as data** (`ViddikVerifyReport.kt`, #80). Every fixture
+      `verify` compares writes `<reportsDir>/results/<golden name>.json` — per fixture, like the PNGs,
+      for the same shard and `--component` reason — and the verifying run appends one trailing test,
+      `VERIFY_SUMMARY_TEST_NAME`, that gathers them into `<reportsDir>/summary.json` (written to a
+      temporary file and moved, since two forks finish at about the same time; the last one has the
+      fullest view, and the entries stay the authority). It also drops the entries of fixtures the
+      module no longer has. An empty shard gets no summary test, so it stays empty. `verifiedAt` is the
+      entry file's modification time, not a clock read: the build's `kapkan:wall-clock` rule refuses
+      `System.currentTimeMillis()` in main code, and the file system's stamp needs no agreement
+      between forks. A recording run writes no entries. `ViddikVerifyReportTest`.
     `viddik.snapshotsDir`/`viddik.reportsDir` **system properties** (not env vars) override the
     defaults (`src/desktopTest/snapshots`, `build/reports/screenshots`) — needed because different
     consumer modules name their JVM target differently (`jvm()` vs `jvm("desktop")`), and

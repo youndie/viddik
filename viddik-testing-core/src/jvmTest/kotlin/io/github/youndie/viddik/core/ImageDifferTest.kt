@@ -229,4 +229,19 @@ class ImageDifferTest {
         green: Int,
         blue: Int,
     ): Int = (0xFF shl 24) or (red shl 16) or (green shl 8) or blue
+
+    @Test
+    fun `changed pixels are reported as regions, near ones together and far ones apart`() {
+        val golden = solid(200, 100, OPAQUE_BLACK)
+        val actual = solid(200, 100, OPAQUE_BLACK)
+        // A 10x4 block, a pixel 6 px right of it (same region), and a lone pixel far away.
+        for (y in 10 until 14) for (x in 10 until 20) actual.setRGB(x, y, argb(255, 255, 255))
+        actual.setRGB(25, 12, argb(255, 255, 255))
+        actual.setRGB(180, 90, argb(255, 255, 255))
+
+        val regions = ImageDiffer.diff(golden, actual).regions
+
+        assertEquals(listOf(DiffRegion(10, 10, 16, 4, 41), DiffRegion(180, 90, 1, 1, 1)), regions)
+        assertEquals(emptyList<DiffRegion>(), ImageDiffer.diff(golden, solid(200, 100, OPAQUE_BLACK)).regions)
+    }
 }

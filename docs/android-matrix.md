@@ -249,7 +249,10 @@ carries the same numbers for a script or a CI step.
 The console and the column headers count each level's captures apart: how many came back, how many the
 device refused (a fixture that threw), how many were too large for it, how many were lost on the way back (no word
 from the device and no file; on Windows, usually a machine out of sockets during `adb pull`), and how many
-that level's run did not have. `summary.json` has the same, per device and in total.
+that level's run did not have. `summary.json` has the same, per device and in total, and for every cell its
+status, size, share, largest channel delta, pronounced pixels, the `regions` where it differs from its
+reference, and for an empty one which of those it is (`missing`: `refused`, `tooLarge`, `lost`,
+`notInRun`) with the device's `reason`.
 
 **Columns of different density** cannot be compared pixel by pixel: a fixture is laid out in dp, so it comes
 out another size. Each density therefore gets a reference of its own, the newest level of that density, and

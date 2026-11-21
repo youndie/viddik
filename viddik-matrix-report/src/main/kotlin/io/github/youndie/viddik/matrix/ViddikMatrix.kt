@@ -1,5 +1,6 @@
 package io.github.youndie.viddik.matrix
 
+import io.github.youndie.viddik.core.DiffRegion
 import io.github.youndie.viddik.core.ImageDiffer
 import java.awt.image.BufferedImage
 import java.io.File
@@ -59,6 +60,10 @@ public class MatrixCell(
     public val height: Int = 0,
     public val mismatchPercent: Double = 0.0,
     public val maxChannelDelta: Int = 0,
+    /** Mismatched pixels past the differ's floor delta, the kind no tolerance should absorb. */
+    public val pronouncedPixels: Int = 0,
+    /** Where this capture differs from its reference, largest first; see `DiffResult.regions`. */
+    public val regions: List<DiffRegion> = emptyList(),
     /**
      * The reference capture this one differs from, when it does. The diff image itself is not kept: on a
      * real suite (876 fixtures x 5 levels at device density) holding every one until the page is written
@@ -75,6 +80,17 @@ public class MatrixCell(
     internal val refused: Boolean get() = status == CellStatus.MISSING && listed && reason != null && !unfit
     internal val doesNotFit: Boolean get() = status == CellStatus.MISSING && listed && unfit
     internal val lost: Boolean get() = status == CellStatus.MISSING && listed && reason == null
+
+    /** Why a [CellStatus.MISSING] cell is empty, as `summary.json` names it; null for a cell with a capture. */
+    public val missing: String?
+        get() =
+            when {
+                status != CellStatus.MISSING -> null
+                !listed -> "notInRun"
+                unfit -> "tooLarge"
+                reason != null -> "refused"
+                else -> "lost"
+            }
 }
 
 public class MatrixRow(
@@ -370,6 +386,8 @@ private fun cell(
         height = image.height,
         mismatchPercent = diff.mismatchPercent,
         maxChannelDelta = diff.maxChannelDelta,
+        pronouncedPixels = diff.pronouncedPixels,
+        regions = if (status == CellStatus.SAME) emptyList() else diff.regions,
         diffAgainst = if (status == CellStatus.SAME) null else referenceFile,
     )
 }
