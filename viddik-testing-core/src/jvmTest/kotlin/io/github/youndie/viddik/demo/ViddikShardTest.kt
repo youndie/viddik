@@ -3,6 +3,7 @@ package io.github.youndie.viddik.demo
 import io.github.youndie.viddik.annotations.ViddikComponent
 import io.github.youndie.viddik.core.CAPTURE_SESSION_TEST_NAME
 import io.github.youndie.viddik.core.RECORD_SUMMARY_TEST_NAME
+import io.github.youndie.viddik.core.VERIFY_SUMMARY_TEST_NAME
 import io.github.youndie.viddik.core.ViddikEngine
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -104,7 +105,10 @@ class ViddikShardTest {
         ViddikEngine
             .dynamicTests(components, shard = shard, shards = shards)
             .map { it.displayName }
-            .filterNot { it == RECORD_SUMMARY_TEST_NAME || it == CAPTURE_SESSION_TEST_NAME }
+            .filterNot {
+                it == RECORD_SUMMARY_TEST_NAME || it == CAPTURE_SESSION_TEST_NAME ||
+                    it == VERIFY_SUMMARY_TEST_NAME
+            }
 
     private fun component(
         group: String,

@@ -1,5 +1,6 @@
 package io.github.youndie.viddik.matrix
 
+import io.github.youndie.viddik.core.DiffRegion
 import io.github.youndie.viddik.core.ImageDiffer
 import java.io.File
 import java.util.Locale
@@ -367,7 +368,11 @@ private fun json(matrix: Matrix): String =
                                 Locale.ROOT,
                                 cell.mismatchPercent,
                             )}, " +
-                            "\"maxChannelDelta\": ${cell.maxChannelDelta}}"
+                            "\"maxChannelDelta\": ${cell.maxChannelDelta}, " +
+                            "\"pronouncedPixels\": ${cell.pronouncedPixels}, " +
+                            "\"regions\": ${regionsJson(cell.regions)}, " +
+                            "\"missing\": ${cell.missing?.quoted() ?: "null"}, " +
+                            "\"reason\": ${cell.reason?.quoted() ?: "null"}}"
                     }
                 val max = "%.4f".format(Locale.ROOT, row.maxMismatchPercent)
                 "    {\"file\": ${row.fileName.quoted()}, \"title\": ${row.title.quoted()}, " +
@@ -378,3 +383,14 @@ private fun json(matrix: Matrix): String =
     }
 
 private fun String.quoted(): String = "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+/** How many regions a cell lists in `summary.json`; past that, `more` says how many were left out. */
+internal const val MAX_REGIONS_LISTED: Int = 16
+
+internal fun regionsJson(regions: List<DiffRegion>): String {
+    val listed =
+        regions.take(MAX_REGIONS_LISTED).joinToString(", ") {
+            "{\"x\": ${it.x}, \"y\": ${it.y}, \"width\": ${it.width}, \"height\": ${it.height}, \"pixels\": ${it.pixels}}"
+        }
+    return "{\"listed\": [$listed], \"more\": ${(regions.size - MAX_REGIONS_LISTED).coerceAtLeast(0)}}"
+}

@@ -85,6 +85,61 @@ class ViddikVerifyReportTest {
         assertTrue(failure.message!!.contains("(100.00%"), failure.message)
     }
 
+    @Test
+    fun `every verification leaves an entry, and the summary gathers them`(
+        @TempDir dir: File,
+    ) {
+        val reports = File(dir, "reports")
+        verify(dir, record = true)
+        verify(dir, record = false)
+        val passed = File(reports, "results/$STEM.json").readText()
+        assertTrue("\"status\": \"match\"" in passed, passed)
+        assertTrue("\"toleranceFrom\": \"default\"" in passed, passed)
+
+        // A golden half blue: the render differs in one region, its exact half.
+        val golden = File(dir, "$STEM.png")
+        val half =
+            solid(
+                RED_ARGB,
+            ).apply { for (y in 0 until HEIGHT) for (x in 0 until WIDTH / 2) setRGB(x, y, BLUE_ARGB) }
+        check(ImageIO.write(half, "png", golden))
+        assertThrows<IllegalStateException> { verify(dir, record = false) }
+
+        val failed = File(reports, "results/$STEM.json").readText()
+        assertTrue("\"status\": \"mismatch\"" in failed, failed)
+        assertTrue("\"pronouncedPixels\": ${WIDTH / 2 * HEIGHT}" in failed, failed)
+        assertTrue("{\"x\": 0, \"y\": 0, \"width\": ${WIDTH / 2}, \"height\": $HEIGHT" in failed, failed)
+        assertTrue("${STEM}_ACTUAL.png" in failed, failed)
+
+        // An entry of a fixture the module no longer has is dropped, not summarised forever.
+        File(reports, "results/Gone_Fixture.json").writeText("{\"status\": \"match\"}")
+        val summary = VerifyReport.writeSummary(reports, setOf("$STEM.png")).readText()
+        assertTrue("\"compared\": 1" in summary, summary)
+        assertTrue("\"failed\": 1" in summary, summary)
+        assertTrue("\"mismatch\": 1" in summary, summary)
+        assertFalse(File(reports, "results/Gone_Fixture.json").exists())
+    }
+
+    @Test
+    fun `a missing golden has an entry too`(
+        @TempDir dir: File,
+    ) {
+        assertThrows<IllegalStateException> { verify(dir, record = false) }
+
+        val entry = File(dir, "reports/results/$STEM.json").readText()
+        assertTrue("\"status\": \"missingGolden\"" in entry, entry)
+        assertTrue("\"actual\": {\"width\": $WIDTH, \"height\": $HEIGHT}" in entry, entry)
+    }
+
+    @Test
+    fun `a recording run writes no entry`(
+        @TempDir dir: File,
+    ) {
+        verify(dir, record = true)
+
+        assertFalse(File(dir, "reports/results").exists())
+    }
+
     private fun verify(
         dir: File,
         record: Boolean,

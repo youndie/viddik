@@ -55,7 +55,19 @@ public class DiffResult internal constructor(
     /** The largest single-channel difference among the mismatched pixels; 255 for a size change. */
     public val maxChannelDelta: Int,
     private val lazyDiffImage: Lazy<BufferedImage>,
+    private val lazyRegions: Lazy<List<DiffRegion>> = lazy { emptyList() },
 ) {
+    /**
+     * Where the mismatched pixels are, as rectangles: pixels within [REGION_CELL] px of each other
+     * share one, largest (by mismatched pixels) first. Built on first read, like [diffImage].
+     *
+     * A count says how much changed and a percentage how much of the canvas that is, and neither says
+     * where. A person reads that off the diff image; a report, a crop or an agent needs it as numbers:
+     * one rectangle over a button means the button changed, a few hundred scattered over every line
+     * of text means the glyphs did.
+     */
+    public val regions: List<DiffRegion> get() = lazyRegions.value
+
     /**
      * The comparison as a picture — every mismatched (or out-of-bounds) pixel solid red, the rest as
      * rendered — built on first read and not before.
@@ -112,6 +124,7 @@ public object ImageDiffer {
             )
         }
 
+        val cells = RegionCells(width, height)
         var mismatched = 0
         var pronounced = 0
         var maxDelta = 0
@@ -119,6 +132,7 @@ public object ImageDiffer {
             for (x in 0 until width) {
                 if (samePixel(expectedPixels, actualPixels, x, y, channelTolerance)) continue
                 mismatched++
+                cells.add(x, y)
                 // Only reached for a pixel that already differs, so the matching bulk of an image
                 // pays nothing for it.
                 val delta =
@@ -138,6 +152,7 @@ public object ImageDiffer {
             pronouncedPixels = pronounced,
             maxChannelDelta = maxDelta,
             lazyDiffImage = lazy { paint(expectedPixels, actualPixels, width, height, channelTolerance) },
+            lazyRegions = lazy { cells.regions() },
         )
     }
 
@@ -245,4 +260,102 @@ public object ImageDiffer {
         shift: Int,
         tolerance: Int,
     ): Boolean = channelDistance(expected, actual, shift) <= tolerance
+}
+
+/**
+ * A rectangle of a [DiffResult] holding [pixels] mismatched pixels, in the coordinates of the larger of
+ * the two images (a size change's non-overlap included).
+ */
+public data class DiffRegion(
+    public val x: Int,
+    public val y: Int,
+    public val width: Int,
+    public val height: Int,
+    public val pixels: Int,
+)
+
+/**
+ * How close two mismatched pixels have to be to share a region: they are binned into cells this size,
+ * and cells touching each other (diagonally too) are one region. 16 px keeps a changed word one region
+ * and two buttons a screen apart two.
+ */
+public const val REGION_CELL: Int = 16
+
+/**
+ * The bins behind [DiffResult.regions]. Each cell keeps the exact bounding box of its pixels, so a region
+ * is pixel-accurate however coarse the cells; the arrays are allocated by the first mismatched pixel, so
+ * a comparison that matches pays nothing.
+ */
+private class RegionCells(
+    width: Int,
+    height: Int,
+) {
+    private val columns = (width + REGION_CELL - 1) / REGION_CELL
+    private val rows = (height + REGION_CELL - 1) / REGION_CELL
+    private var count: IntArray? = null
+    private lateinit var minX: IntArray
+    private lateinit var minY: IntArray
+    private lateinit var maxX: IntArray
+    private lateinit var maxY: IntArray
+
+    fun add(
+        x: Int,
+        y: Int,
+    ) {
+        var counts = count
+        if (counts == null) {
+            counts = IntArray(columns * rows)
+            count = counts
+            minX = IntArray(counts.size) { Int.MAX_VALUE }
+            minY = IntArray(counts.size) { Int.MAX_VALUE }
+            maxX = IntArray(counts.size) { -1 }
+            maxY = IntArray(counts.size) { -1 }
+        }
+        val cell = (y / REGION_CELL) * columns + x / REGION_CELL
+        counts[cell]++
+        if (x < minX[cell]) minX[cell] = x
+        if (y < minY[cell]) minY[cell] = y
+        if (x > maxX[cell]) maxX[cell] = x
+        if (y > maxY[cell]) maxY[cell] = y
+    }
+
+    fun regions(): List<DiffRegion> {
+        val counts = count ?: return emptyList()
+        val seen = BooleanArray(counts.size)
+        val regions = mutableListOf<DiffRegion>()
+        val stack = ArrayDeque<Int>()
+        for (start in counts.indices) {
+            if (counts[start] == 0 || seen[start]) continue
+            var left = Int.MAX_VALUE
+            var top = Int.MAX_VALUE
+            var right = -1
+            var bottom = -1
+            var pixels = 0
+            seen[start] = true
+            stack.addLast(start)
+            while (stack.isNotEmpty()) {
+                val cell = stack.removeLast()
+                pixels += counts[cell]
+                left = minOf(left, minX[cell])
+                top = minOf(top, minY[cell])
+                right = maxOf(right, maxX[cell])
+                bottom = maxOf(bottom, maxY[cell])
+                val column = cell % columns
+                val row = cell / columns
+                for (dy in -1..1) {
+                    for (dx in -1..1) {
+                        val c = column + dx
+                        val r = row + dy
+                        if (c !in 0 until columns || r !in 0 until rows) continue
+                        val next = r * columns + c
+                        if (counts[next] == 0 || seen[next]) continue
+                        seen[next] = true
+                        stack.addLast(next)
+                    }
+                }
+            }
+            regions += DiffRegion(left, top, right - left + 1, bottom - top + 1, pixels)
+        }
+        return regions.sortedByDescending { it.pixels }
+    }
 }

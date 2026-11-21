@@ -13,6 +13,17 @@ what it is, without a record that overwrites the golden. A fixture that passes r
 files an earlier failure left.
 Recording does not validate anything — look at what it wrote before committing it.
 
+The same verification as data, for a script, a CI step or an agent: every fixture it compares leaves
+an entry in `build/reports/screenshots/results/<group>_<name>.json`, and the run gathers them into
+`build/reports/screenshots/summary.json`. Each entry has the fixture, a `status` (`match`, `mismatch`,
+`size`, `missingGolden`, `unreadableGolden`, `error`), the failure's message, both sizes, the
+mismatched and pronounced pixel counts, the share, the largest channel delta, the `regions` that
+changed (rectangles, largest first: one over a button means the button changed, hundreds over every
+line mean the glyphs did), the thresholds that decided it and where the tolerance came from
+(`fixture`, `run`, `default`), the paths of the three PNGs above, and `verifiedAt`. A shard or a
+`--component` run replaces only the entries of the fixtures it ran; an entry whose fixture the module no
+longer has is dropped.
+
 A golden that is not an image fails its fixture with the path in the message. With goldens in Git
 LFS, a checkout that never ran `git lfs pull` (a fresh clone, a `git worktree add`) has a text
 pointer in place of every PNG; verify says so — "is a Git LFS pointer, not a PNG" — instead of

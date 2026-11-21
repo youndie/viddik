@@ -130,14 +130,57 @@ public object ViddikEngine {
     ) {
         val fileName = fileNameFor(component)
         val goldenFile = File(snapshotsDir, fileName)
-        val actual =
-            captureComposable(
-                width = component.width,
-                height = component.height,
-                fontScale = component.fontScale,
-                captureAtMillis = component.captureAtMillis,
-                content = component.content,
+        val thresholds =
+            VerifyReport.Thresholds(
+                tolerancePercent = tolerancePercent,
+                toleranceFrom = toleranceOrigin(component, tolerancePercent),
+                channelTolerance = channelTolerance,
+                minMismatchedPixels = minMismatchedPixels,
+                floorChannelDelta = floorChannelDelta,
+                pronouncedPixelBudget = pronouncedPixelBudget,
             )
+
+        fun report(
+            status: VerifyReport.Status,
+            message: String? = null,
+            expected: BufferedImage? = null,
+            actual: BufferedImage? = null,
+            diff: DiffResult? = null,
+            files: Triple<File, File, File>? = null,
+        ) {
+            if (record) return
+            VerifyReport.write(
+                reportsDir,
+                VerifyReport.Entry(
+                    group = component.group,
+                    name = component.name,
+                    golden = goldenFile,
+                    status = status,
+                    thresholds = thresholds,
+                    message = message,
+                    expectedSize = expected?.let { it.width to it.height },
+                    actualSize = actual?.let { it.width to it.height },
+                    diff = diff,
+                    diffFile = files?.first,
+                    actualFile = files?.second,
+                    expectedFile = files?.third,
+                ),
+            )
+        }
+
+        val actual =
+            try {
+                captureComposable(
+                    width = component.width,
+                    height = component.height,
+                    fontScale = component.fontScale,
+                    captureAtMillis = component.captureAtMillis,
+                    content = component.content,
+                )
+            } catch (failure: Throwable) {
+                report(VerifyReport.Status.ERROR, message = failure.message ?: failure.toString())
+                throw failure
+            }
 
         if (record) {
             recordGolden(
@@ -161,15 +204,24 @@ public object ViddikEngine {
         REPORT_SUFFIXES.forEach { File(reportsDir, reportStem + it).delete() }
 
         if (!goldenFile.exists()) {
-            error(
+            val message =
                 "No golden snapshot for ${component.group}/${component.name} at ${goldenFile.path}. " +
-                    "Run with $RECORD_MODE_ENV=true to record it.",
-            )
+                    "Run with $RECORD_MODE_ENV=true to record it."
+            report(VerifyReport.Status.MISSING_GOLDEN, message = message, actual = actual)
+            error(message)
         }
 
-        val expected = readGolden(component, goldenFile)
+        val expected =
+            try {
+                readGolden(component, goldenFile)
+            } catch (unreadable: IllegalStateException) {
+                report(VerifyReport.Status.UNREADABLE_GOLDEN, message = unreadable.message, actual = actual)
+                throw unreadable
+            }
         val diff = ImageDiffer.diff(expected, actual, channelTolerance, floorChannelDelta)
-        if (!diff.matches(tolerancePercent, minMismatchedPixels, pronouncedPixelBudget)) {
+        if (diff.matches(tolerancePercent, minMismatchedPixels, pronouncedPixelBudget)) {
+            report(VerifyReport.Status.MATCH, expected = expected, actual = actual, diff = diff)
+        } else {
             // The diff paints exactly the pixels that changed, so on its own it says where but never
             // what (#63). The render and a copy of the golden go beside it, which also makes the
             // directory a complete answer when it is the only thing a CI run uploads.
@@ -183,6 +235,7 @@ public object ViddikEngine {
             // failure reads as "the suite's threshold" when it was really this fixture's own number.
             val toleranceOrigin =
                 if (component.tolerancePercent == tolerancePercent) " from @ViddikScreenshot" else ""
+            val sizeChanged = expected.width != actual.width || expected.height != actual.height
             val budget =
                 if (pronouncedPixelBudget == UNLIMITED_PRONOUNCED_PIXELS) {
                     ""
@@ -190,7 +243,7 @@ public object ViddikEngine {
                     " with at most $pronouncedPixelBudget px past delta $floorChannelDelta " +
                         "(${diff.pronouncedPixels} are)"
                 }
-            error(
+            val message =
                 "Screenshot mismatch for ${component.group}/${component.name}: " +
                     "${diff.mismatchedPixels}/${diff.totalPixels} px differ (${"%.2f".format(
                         Locale.ROOT,
@@ -199,10 +252,30 @@ public object ViddikEngine {
                     "tolerance $tolerancePercent%$toleranceOrigin$budget or $minMismatchedPixels px " +
                     "within a channel delta of $floorChannelDelta). " +
                     "Diff saved to ${diffFile.path}, the render to ${actualFile.path}, " +
-                    "the golden to ${expectedFile.path}",
+                    "the golden to ${expectedFile.path}"
+            report(
+                if (sizeChanged) VerifyReport.Status.SIZE else VerifyReport.Status.MISMATCH,
+                message = message,
+                expected = expected,
+                actual = actual,
+                diff = diff,
+                files = Triple(diffFile, actualFile, expectedFile),
             )
+            error(message)
         }
     }
+
+    /** Where the tolerance [verify] judged by came from, as `summary.json` names it. */
+    private fun toleranceOrigin(
+        component: ViddikComponent,
+        tolerancePercent: Double,
+    ): String =
+        when (tolerancePercent) {
+            component.tolerancePercent -> "fixture"
+            System.getProperty(TOLERANCE_PERCENT_PROPERTY)?.toDoubleOrNull() -> "run"
+            DEFAULT_TOLERANCE_PERCENT -> "default"
+            else -> "argument"
+        }
 
     /**
      * The golden [verify] compares against, or a failure that names the file.
@@ -448,9 +521,7 @@ public object ViddikEngine {
             if (recordMode) {
                 recordTests(ordered)
             } else {
-                ordered.map { component ->
-                    DynamicTest.dynamicTest(displayNameFor(component)) { verify(component) }
-                }
+                verifyTests(ordered, components)
             }
 
         // A reused scene outlives the fixtures by construction, so somebody has to end it: the
@@ -554,6 +625,27 @@ public object ViddikEngine {
                 }
             }
         return perFixture + summary
+    }
+
+    /**
+     * The verifying shape of the run: a test per fixture, plus one trailing test that gathers what
+     * they wrote into `summary.json` ([VerifyReport]). Nothing to gather in an empty shard, which
+     * therefore stays empty.
+     */
+    private fun verifyTests(
+        selected: List<ViddikComponent>,
+        module: List<ViddikComponent>,
+    ): List<DynamicTest> {
+        if (selected.isEmpty()) return emptyList()
+        val perFixture =
+            selected.map { component ->
+                DynamicTest.dynamicTest(displayNameFor(component)) { verify(component) }
+            }
+        val goldenNames = module.map(::fileNameFor).toSet()
+        return perFixture +
+            DynamicTest.dynamicTest(VERIFY_SUMMARY_TEST_NAME) {
+                VerifyReport.writeSummary(defaultReportsDir, goldenNames)
+            }
     }
 
     /** Width, then canvas height, then name, so a run visits each scene size once. */
