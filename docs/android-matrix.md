@@ -272,6 +272,36 @@ failure. A fixture too large for the device is counted and noted on the page, an
 too large on every run, and a task kept red by it would say nothing when something else broke. A taller
 `device` captures it.
 
+## Finding the level that draws a fixture wrong
+
+Every level differs from the reference — glyphs, shadows, a status bar — so the largest difference is
+usually the platform, not a defect. What points at a level is that it disagrees with the *other* levels
+while they agree among themselves. The report compares the levels of one density with each other,
+fixture by fixture, and lists the cells that look wrong on their level under **Suspects** at the top of
+the page, the most suspicious first, and in `triage.json`. A cell is a suspect when:
+
+- it is far from the other levels (at least 1%, and three times the spread among them) while they agree;
+  this needs at least four levels with a capture of that fixture: with three, two older levels agreeing
+  against a newer one is as often the platform's history (coloured shadows arrive in 28) as a defect;
+- it is another size than the one the other levels agree on;
+- it is nearly blank where the others are not;
+- it differs from the reference five times more than its level usually does (and by at least 1%).
+
+One large connected change — an element missing, moved or drawn wrong, rather than many small ones over the
+text — ranks a suspect higher. Each suspect has its reasons with their numbers, the levels it disagrees
+with, a crop against the level closest to all the others (`triage/<level>/<fixture>.png`), and the command
+that captures just that fixture on just that level again: a finding worth reporting is one that comes
+back.
+
+```bash
+./gradlew :yourModule:viddikAndroidMatrix -PviddikMatrix.apiLevels=24,26,27,31,34,36
+```
+
+For this kind of search run every level on one device profile and one renderer: columns of different
+density are not compared with each other, and renderers differ by up to ~0.4% on their own. A problem
+present on every level is not an odd one out — that is what the JVM goldens and design parity are for.
+Nothing fails on a suspect; the list ranks what to look at.
+
 ## Compose resources
 
 Compose Multiplatform 1.12 adds a task copying compose resources into the device-test APK, and that

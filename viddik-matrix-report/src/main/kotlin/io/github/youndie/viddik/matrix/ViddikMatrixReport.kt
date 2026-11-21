@@ -19,7 +19,8 @@ import kotlin.system.exitProcess
 public fun writeReport(
     matrix: Matrix,
     outputDir: File,
-) {
+    projectPath: String = "",
+): List<TriageFinding> {
     outputDir.deleteRecursively()
     outputDir.mkdirs()
     for (device in matrix.devices) {
@@ -43,9 +44,87 @@ public fun writeReport(
             }
         }
     }
-    File(outputDir, "index.html").writeText(html(matrix))
+    val findings = triage(matrix)
+    writeTriageCrops(findings, outputDir)
+    File(outputDir, "index.html").writeText(html(matrix, findings))
     File(outputDir, "summary.json").writeText(json(matrix))
+    File(outputDir, TRIAGE_FILE).writeText(triageJson(findings, projectPath))
+    return findings
 }
+
+/** The suspects, ranked: what to hand an agent asked to find the rendering problems (#78). */
+internal const val TRIAGE_FILE = "triage.json"
+
+/** How many suspects the page lists; `triage.json` has every one. */
+private const val SUSPECTS_SHOWN = 50
+
+private fun triageJson(
+    findings: List<TriageFinding>,
+    projectPath: String,
+): String =
+    buildString {
+        append("{\n  \"suspects\": ${findings.size},\n  \"findings\": [\n")
+        append(
+            findings.joinToString(",\n") { finding ->
+                val cell = finding.row.cells.getValue(finding.device.slug)
+
+                fun number(value: Double?) = value?.let { "%.4f".format(Locale.ROOT, it) } ?: "null"
+                "    {\"file\": ${finding.row.fileName.quoted()}, \"title\": ${finding.row.title.quoted()}, " +
+                    "\"level\": ${finding.device.slug.quoted()}, \"sdkInt\": ${finding.device.sdkInt}, " +
+                    "\"score\": ${number(finding.score)}, " +
+                    "\"reasons\": [${finding.reasons.joinToString { it.quoted() }}], " +
+                    "\"mismatchPercent\": ${number(finding.mismatchPercent)}, " +
+                    "\"levelMedianPercent\": ${number(finding.levelMedianPercent)}, " +
+                    "\"distanceToOthers\": ${number(finding.distanceToOthers)}, " +
+                    "\"othersSpread\": ${number(finding.othersSpread)}, " +
+                    "\"largestRegionShare\": ${number(finding.largestRegionShare)}, " +
+                    "\"disagreesWith\": [${finding.disagreesWith.joinToString { it.quoted() }}], " +
+                    "\"comparedWith\": ${finding.comparedWith?.quoted() ?: "null"}, " +
+                    "\"files\": {\"capture\": ${"${finding.device.slug}/${finding.row.fileName}".quoted()}, " +
+                    "\"diff\": ${if (cell.diffAgainst != null) {
+                        "${finding.device.slug}/diff/${finding.row.fileName}"
+                            .quoted()
+                    } else {
+                        "null"
+                    }}, " +
+                    "\"crop\": ${if (finding.comparedWith != null) triageCropPath(finding).quoted() else "null"}}, " +
+                    "\"rerun\": ${rerunCommand(finding, projectPath).quoted()}}"
+            },
+        )
+        append("\n  ]\n}\n")
+    }
+
+private fun suspectsHtml(findings: List<TriageFinding>): String =
+    buildString {
+        if (findings.isEmpty()) {
+            append(
+                "<div class=\"meta\"><b>Suspects:</b> none — no level disagrees with the others of its density.</div>\n",
+            )
+            return@buildString
+        }
+        append(
+            "<h2>Suspects</h2>\n<div class=\"meta\">${findings.size} cell(s) that look wrong on their level rather than ",
+        )
+        append("different by platform, most suspicious first")
+        if (findings.size > SUSPECTS_SHOWN) append(" (the first $SUSPECTS_SHOWN; triage.json has all)")
+        append(". Each crop compares the level with the one closest to the rest.</div>\n")
+        append(
+            "<table class=\"suspects\">\n<thead><tr><th>Fixture</th><th>Level</th><th>Why</th><th>Crop</th></tr></thead>\n<tbody>\n",
+        )
+        for (finding in findings.take(SUSPECTS_SHOWN)) {
+            append(
+                "<tr><td class=\"name\">${finding.row.title.escape()}</td><td>${finding.device.label.escape()}</td><td>",
+            )
+            append(finding.reasons.joinToString("<br>") { it.escape() })
+            append("</td><td>")
+            if (finding.comparedWith != null) {
+                val src = triageCropPath(finding).escape()
+                append("<a href=\"$src\"><img loading=\"lazy\" src=\"$src\" alt=\"\"></a>")
+            }
+            append("</td></tr>\n")
+        }
+        append("</tbody>\n</table>\n<h2>All fixtures</h2>\n")
+    }
 
 /** One line for the console: what ran, and how much of it diverged. */
 public fun summaryLine(
@@ -148,6 +227,7 @@ public fun main(args: Array<String>) {
     var output: File? = null
     var reference: Int? = null
     var only: Set<Int>? = null
+    var project = ""
     var i = 0
     while (i < args.size) {
         when (args[i]) {
@@ -167,6 +247,10 @@ public fun main(args: Array<String>) {
                 only = args[++i].split(',').map { it.trim().toInt() }.toSet()
             }
 
+            "--project" -> {
+                project = args[++i]
+            }
+
             else -> {
                 System.err.println("Unknown argument ${args[i]}")
                 exitProcess(2)
@@ -176,10 +260,17 @@ public fun main(args: Array<String>) {
     }
     val out = output ?: error("--output is required")
     val matrix = buildMatrix(inputs, reference, only)
-    writeReport(matrix, out)
+    val findings = writeReport(matrix, out, project)
     matrix.notes.forEach { System.err.println("warning: $it") }
     val missingLevels = only?.let { missingLevelsWarning(matrix, it) }
     println(summaryLine(matrix, out))
+    println(
+        if (findings.isEmpty()) {
+            "No suspects: no level disagrees with the others of its density."
+        } else {
+            "${findings.size} suspect(s), most suspicious first, in ${File(out, TRIAGE_FILE).path}"
+        },
+    )
     columnLines(matrix).forEach(::println)
     unfitMessage(matrix)?.let { System.err.println("warning: $it") }
     val lost = listOfNotNull(missingLevels, missingCapturesMessage(matrix))
@@ -195,7 +286,10 @@ public fun main(args: Array<String>) {
     }
 }
 
-private fun html(matrix: Matrix): String =
+private fun html(
+    matrix: Matrix,
+    findings: List<TriageFinding> = emptyList(),
+): String =
     buildString {
         val diverging = matrix.rows.count { it.diverges }
         append(
@@ -215,6 +309,8 @@ private fun html(matrix: Matrix): String =
             thead th { position: sticky; top: 0; background: #f6f6fa; z-index: 1; }
             th small { display: block; font-weight: normal; color: #5d5e66; }
             td.name { font-weight: 600; max-width: 220px; }
+            table.suspects { margin-bottom: 24px; } table.suspects td img { max-width: 560px; max-height: 300px; }
+            h2 { font-size: 16px; margin: 16px 0 4px; }
             td img { display: block; max-width: 260px; max-height: 420px; background:
               repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
             .tag { display: inline-block; margin-top: 6px; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
@@ -234,6 +330,7 @@ private fun html(matrix: Matrix): String =
         append("), the most different first. Same = within viddikVerify's default thresholds.</div>\n")
         val notes = matrix.notes + listOfNotNull(missingCapturesMessage(matrix), unfitMessage(matrix))
         for (note in notes) append("<div class=\"meta\"><b>Note:</b> ${note.escape()}</div>\n")
+        append(suspectsHtml(findings))
         append("<div class=\"filters\">")
         append("<label><input type=\"checkbox\" id=\"only\"> Only fixtures that differ</label>")
         append(

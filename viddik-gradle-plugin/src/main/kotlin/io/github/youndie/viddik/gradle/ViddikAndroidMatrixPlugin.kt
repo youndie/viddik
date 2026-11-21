@@ -188,6 +188,8 @@ public class ViddikAndroidMatrixPlugin : Plugin<Project> {
                     apiLevels.get().joinToString(","),
                     "--reference-api",
                     referenceApi.get().toString(),
+                    "--project",
+                    target.path,
                 )
                 task.outputs.dir(reportDir)
                 // The captures are on the emulators until a run pulls them back, so there is nothing
