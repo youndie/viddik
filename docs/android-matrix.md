@@ -65,6 +65,7 @@ viddikAndroidMatrix {
     device = "Pixel 6"                   // default; one hardware profile for every level
     systemImageSource = "aosp"           // default; or "aosp-atd", "google", "google-atd"
     referenceApi = 36                    // default: the highest of apiLevels
+    baselineDir = layout.projectDirectory.dir("src/viddikMatrixBaselines") // default
 }
 ```
 
@@ -135,6 +136,7 @@ The emulator's renderer is a setting of the whole run, and it matters twice.
 - **`viddikAndroidMatrix`** — sets up and runs every emulator of the group, strictly one level at a
   time, then the report.
 - **`viddikAndroidMatrixReport`** — the report alone, over whatever the last run pulled back.
+- **`viddikAndroidMatrixBaseline`** — makes the last kept run of each level its baseline (below).
 
 A fixture that fails on one level does not stop the others, and neither does it stop the rest of that
 level. The page is written either way, even when an emulator never came up, and then the task fails if
@@ -301,6 +303,42 @@ For this kind of search run every level on one device profile and one renderer: 
 density are not compared with each other, and renderers differ by up to ~0.4% on their own. A problem
 present on every level is not an odd one out — that is what the JVM goldens and design parity are for.
 Nothing fails on a suspect; the list ranks what to look at.
+
+## A change on some levels only
+
+The suspects above answer "which level draws this wrong now". The other question is "which level did
+this change break", and a level can answer it about itself: on one renderer two full runs of a level are
+byte-identical. So a kept run can be the level's **baseline**:
+
+```bash
+./gradlew :yourModule:viddikAndroidMatrix
+./gradlew :yourModule:viddikAndroidMatrixBaseline   # the run just made becomes each level's baseline
+# … change the code …
+./gradlew :yourModule:viddikAndroidMatrix           # the page now has "Against the baseline"
+```
+
+The baseline task copies each level's kept capture into `baselineDir/api<N>-<density>/`, replacing that
+level's previous baseline and leaving the levels it did not run alone (`-PviddikMatrix.apiLevels` picks
+them). From then on every capture is also compared with its own level's baseline, and each fixture is
+classed by where it changed:
+
+| changed against its own baseline | likely |
+|---|---|
+| on some levels only | a regression on those levels: look at those first |
+| on every level compared | an intended change of the component: make a new baseline |
+| nowhere | nothing |
+
+The page lists the first two with a crop against the baseline per changed level, and `baseline.json`
+has every fixture's class, the levels it changed on and each level's numbers. A fixture no baseline has
+is new, and counts in none of them.
+
+A baseline is compared only with captures of the same level, density and model, and **not at all** when
+the system image build or the renderer differs from the one it was taken on (both are in `device.json`):
+either moves pixels by itself, and the comparison would report the emulator. The page says which levels
+were left out and why. A baseline of a filtered run has only that run's fixtures; the task warns.
+
+Whether `baselineDir` is committed is the project's call: committed, it multiplies the PNGs by the
+number of levels; restored from a CI artifact before the run, it works the same.
 
 ## Compose resources
 

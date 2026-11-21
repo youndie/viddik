@@ -963,6 +963,19 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
     be the odd one. `triage.json` carries a rerun command per suspect; the plugin passes `--project` for
     it, and below `MIN_MANAGED_API` it is a connected run. Cost: n(n-1)/2 diffs per fixture and density,
     with the row's captures held in memory, sequential (the report JVM has run out of heap before).
+  - **Baselines per level** (`ViddikBaseline.kt`, `ViddikMatrixBaselineTask`, #81). The question triage
+    cannot answer is which level a *change* broke; a level can answer it about itself, because two runs
+    of it on one renderer are byte-identical (the repeatability measurement above).
+    `viddikAndroidMatrixBaseline` copies each kept level, flat, into `baselineDir/api<N>-<density>/`
+    (`baselineKeyOf` in the plugin and `baselineKey` in the report must agree; the modules share no code),
+    and the report (`--baseline`) compares every capture with its level's copy at default thresholds and
+    classes each fixture: `some` (changed on some compared levels, not all — the regression case),
+    `everywhere` (the component), `unchanged`, or `changed` when only one level was compared and the
+    class says nothing about levels. A baseline is refused, with a note, when model, `fingerprint`
+    (`Build.FINGERPRINT`) or `renderer` differs: the capture now records both in `device.json`, the
+    renderer as `GL_RENDERER` from a throwaway EGL pbuffer context (the display is left initialised,
+    since HWUI shares it). That EGL probe was written without a device run (memory below the emulator
+    threshold at the time); it is inside `runCatching`, so a failure is a null, not a lost run.
   - `viddik-matrix-report` (plain JVM) walks for `device.json`, compares every column with the
     reference through `ImageDiffer` at default thresholds, writes `build/reports/viddik-matrix/`.
     Run by `viddikAndroidMatrixReport` (`JavaExec` over a resolvable configuration, `isIgnoreExitValue` with a

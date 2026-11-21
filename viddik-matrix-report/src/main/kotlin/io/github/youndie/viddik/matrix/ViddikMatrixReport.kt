@@ -20,6 +20,7 @@ public fun writeReport(
     matrix: Matrix,
     outputDir: File,
     projectPath: String = "",
+    baselines: BaselineReport? = null,
 ): List<TriageFinding> {
     outputDir.deleteRecursively()
     outputDir.mkdirs()
@@ -46,7 +47,11 @@ public fun writeReport(
     }
     val findings = triage(matrix)
     writeTriageCrops(findings, outputDir)
-    File(outputDir, "index.html").writeText(html(matrix, findings))
+    if (baselines != null) {
+        writeBaselineCrops(matrix, baselines, outputDir)
+        File(outputDir, BASELINE_FILE).writeText(baselineJson(matrix, baselines))
+    }
+    File(outputDir, "index.html").writeText(html(matrix, findings, baselines))
     File(outputDir, "summary.json").writeText(json(matrix))
     File(outputDir, TRIAGE_FILE).writeText(triageJson(findings, projectPath))
     return findings
@@ -54,6 +59,9 @@ public fun writeReport(
 
 /** The suspects, ranked: what to hand an agent asked to find the rendering problems (#78). */
 internal const val TRIAGE_FILE = "triage.json"
+
+/** Each level against its own baseline (#81), when the run had any. */
+internal const val BASELINE_FILE = "baseline.json"
 
 /** How many suspects the page lists; `triage.json` has every one. */
 private const val SUSPECTS_SHOWN = 50
@@ -228,6 +236,7 @@ public fun main(args: Array<String>) {
     var reference: Int? = null
     var only: Set<Int>? = null
     var project = ""
+    var baselineRoot: File? = null
     var i = 0
     while (i < args.size) {
         when (args[i]) {
@@ -251,6 +260,10 @@ public fun main(args: Array<String>) {
                 project = args[++i]
             }
 
+            "--baseline" -> {
+                baselineRoot = File(args[++i])
+            }
+
             else -> {
                 System.err.println("Unknown argument ${args[i]}")
                 exitProcess(2)
@@ -260,8 +273,11 @@ public fun main(args: Array<String>) {
     }
     val out = output ?: error("--output is required")
     val matrix = buildMatrix(inputs, reference, only)
-    val findings = writeReport(matrix, out, project)
+    val baselines = baselineRoot?.takeIf { it.isDirectory }?.let { compareWithBaselines(matrix, it) }
+    val findings = writeReport(matrix, out, project, baselines)
     matrix.notes.forEach { System.err.println("warning: $it") }
+    baselines?.notes?.forEach { System.err.println("warning: $it") }
+    baselines?.let(::baselineLine)?.let(::println)
     val missingLevels = only?.let { missingLevelsWarning(matrix, it) }
     println(summaryLine(matrix, out))
     println(
@@ -289,6 +305,7 @@ public fun main(args: Array<String>) {
 private fun html(
     matrix: Matrix,
     findings: List<TriageFinding> = emptyList(),
+    baselines: BaselineReport? = null,
 ): String =
     buildString {
         val diverging = matrix.rows.count { it.diverges }
@@ -328,8 +345,11 @@ private fun html(
         append("$diverging differ from <b>${referenceName(matrix).escape()}</b> (")
         append(spread(matrix))
         append("), the most different first. Same = within viddikVerify's default thresholds.</div>\n")
-        val notes = matrix.notes + listOfNotNull(missingCapturesMessage(matrix), unfitMessage(matrix))
+        val notes =
+            matrix.notes + baselines?.notes.orEmpty() +
+                listOfNotNull(missingCapturesMessage(matrix), unfitMessage(matrix))
         for (note in notes) append("<div class=\"meta\"><b>Note:</b> ${note.escape()}</div>\n")
+        if (baselines != null) append(baselineHtml(matrix, baselines))
         append(suspectsHtml(findings))
         append("<div class=\"filters\">")
         append("<label><input type=\"checkbox\" id=\"only\"> Only fixtures that differ</label>")

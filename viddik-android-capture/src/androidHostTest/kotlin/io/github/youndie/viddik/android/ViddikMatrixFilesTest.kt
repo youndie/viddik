@@ -84,5 +84,9 @@ class ViddikMatrixFilesTest {
             "{\"sdkInt\":34,\"release\":\"14\",\"model\":\"sdk \\\"gphone\\\"\",\"density\":2.625,\"widthPx\":1080,\"heightPx\":2400}\n",
             deviceJson(34, "14", "sdk \"gphone\"", 2.625f, 1080, 2400),
         )
+        assertTrue(
+            deviceJson(34, "14", "x", 2.625f, 1080, 2400, "google/sdk:14/UE1A", "Google SwiftShader")
+                .endsWith(",\"fingerprint\":\"google/sdk:14/UE1A\",\"renderer\":\"Google SwiftShader\"}\n"),
+        )
     }
 }

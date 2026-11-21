@@ -23,6 +23,10 @@ public class MatrixDevice(
      * it left, however recent, and says so: the day-old threshold alone hid exactly this case.
      */
     public val pulledNothingAt: Long? = null,
+    /** The system image's build (`Build.FINGERPRINT`), when the capture recorded it. */
+    public val fingerprint: String? = null,
+    /** The OpenGL renderer the device drew with, when the capture recorded it. */
+    public val renderer: String? = null,
 ) {
     /** What a column is called. The model is there for the day two devices share an API level. */
     public val label: String get() = "API $sdkInt"
@@ -434,14 +438,15 @@ internal fun readDevice(file: File): MatrixDevice {
         Regex(""""$key"\s*:\s*(-?[0-9.]+)""").find(text)?.groupValues?.get(1)
             ?: error("${file.path} has no \"$key\"")
 
-    fun string(key: String): String =
+    fun optionalString(key: String): String? =
         Regex(""""$key"\s*:\s*"((?:\\.|[^"\\])*)"""")
             .find(text)
             ?.groupValues
             ?.get(1)
             ?.replace("\\\"", "\"")
             ?.replace("\\\\", "\\")
-            ?: error("${file.path} has no \"$key\"")
+
+    fun string(key: String): String = optionalString(key) ?: error("${file.path} has no \"$key\"")
     return MatrixDevice(
         dir = file.parentFile,
         sdkInt = number("sdkInt").toInt(),
@@ -450,6 +455,8 @@ internal fun readDevice(file: File): MatrixDevice {
         density = number("density").toFloat(),
         capturedAt = file.lastModified(),
         pulledNothingAt = pulledNothingAt(file.parentFile),
+        fingerprint = optionalString("fingerprint"),
+        renderer = optionalString("renderer"),
     )
 }
 
