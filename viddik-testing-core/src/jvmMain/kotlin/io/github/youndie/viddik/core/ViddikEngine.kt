@@ -25,7 +25,8 @@ private const val DEFAULT_REPORTS_DIR = "build/reports/screenshots"
 private const val DIFF_SUFFIX = "_DIFF.png"
 private const val ACTUAL_SUFFIX = "_ACTUAL.png"
 private const val EXPECTED_SUFFIX = "_EXPECTED.png"
-private val REPORT_SUFFIXES = listOf(DIFF_SUFFIX, ACTUAL_SUFFIX, EXPECTED_SUFFIX)
+private const val CROP_SUFFIX = "_CROP.png"
+private val REPORT_SUFFIXES = listOf(DIFF_SUFFIX, ACTUAL_SUFFIX, EXPECTED_SUFFIX, CROP_SUFFIX)
 
 /** How every Git LFS pointer file begins; see [ViddikEngine.verify]. */
 private const val LFS_POINTER_HEADER = "version https://git-lfs.github.com/spec/"
@@ -147,6 +148,7 @@ public object ViddikEngine {
             actual: BufferedImage? = null,
             diff: DiffResult? = null,
             files: Triple<File, File, File>? = null,
+            crop: File? = null,
         ) {
             if (record) return
             VerifyReport.write(
@@ -164,6 +166,7 @@ public object ViddikEngine {
                     diffFile = files?.first,
                     actualFile = files?.second,
                     expectedFile = files?.third,
+                    cropFile = crop,
                 ),
             )
         }
@@ -231,6 +234,12 @@ public object ViddikEngine {
             writePng(diff.diffImage, diffFile)
             writePng(actual, actualFile)
             goldenFile.copyTo(expectedFile, overwrite = true)
+            // The three above are full size; a change of a pixel or two in a screen is invisible once a
+            // viewer scales them down. The crop is that change at 1:1, beside its golden (#79).
+            val cropFile =
+                DiffCrop.render(expected, actual, diff)?.let { crop ->
+                    File(reportsDir, reportStem + CROP_SUFFIX).also { writePng(crop, it) }
+                }
             // Naming where the tolerance came from matters once a fixture can carry its own: otherwise a
             // failure reads as "the suite's threshold" when it was really this fixture's own number.
             val toleranceOrigin =
@@ -252,7 +261,8 @@ public object ViddikEngine {
                     "tolerance $tolerancePercent%$toleranceOrigin$budget or $minMismatchedPixels px " +
                     "within a channel delta of $floorChannelDelta). " +
                     "Diff saved to ${diffFile.path}, the render to ${actualFile.path}, " +
-                    "the golden to ${expectedFile.path}"
+                    "the golden to ${expectedFile.path}" +
+                    (cropFile?.let { ", the change at 1:1 to ${it.path}" } ?: "")
             report(
                 if (sizeChanged) VerifyReport.Status.SIZE else VerifyReport.Status.MISMATCH,
                 message = message,
@@ -260,6 +270,7 @@ public object ViddikEngine {
                 actual = actual,
                 diff = diff,
                 files = Triple(diffFile, actualFile, expectedFile),
+                crop = cropFile,
             )
             error(message)
         }

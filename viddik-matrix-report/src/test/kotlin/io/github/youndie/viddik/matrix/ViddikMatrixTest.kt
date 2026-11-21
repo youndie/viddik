@@ -96,6 +96,9 @@ class ViddikMatrixTest {
         assertTrue("\"pronouncedPixels\": 32" in json, json)
         assertTrue("{\"x\": 0, \"y\": 0, \"width\": 8, \"height\": 4, \"pixels\": 32}" in json, json)
         assertTrue("\"missing\": \"refused\", \"reason\": \"boom\"" in json, json)
+        assertTrue("\"crop\": \"api31/crop/A.png\"" in json, json)
+        assertTrue(File(out, "api31/crop/A.png").isFile, "a cell that differs has its change at 1:1")
+        assertTrue("api31/crop/A.png" in File(out, "index.html").readText())
     }
 
     @Test

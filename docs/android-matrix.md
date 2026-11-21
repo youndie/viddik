@@ -252,7 +252,9 @@ from the device and no file; on Windows, usually a machine out of sockets during
 that level's run did not have. `summary.json` has the same, per device and in total, and for every cell its
 status, size, share, largest channel delta, pronounced pixels, the `regions` where it differs from its
 reference, and for an empty one which of those it is (`missing`: `refused`, `tooLarge`, `lost`,
-`notInRun`) with the device's `reason`.
+`notInRun`) with the device's `reason`. A cell that differs links its diff and its `crop`: the changed part
+of the reference, the capture and the diff side by side at 1:1, which is what to look at on a phone-sized
+capture where the full images hide a change of a few pixels.
 
 **Columns of different density** cannot be compared pixel by pixel: a fixture is laid out in dp, so it comes
 out another size. Each density therefore gets a reference of its own, the newest level of that density, and
