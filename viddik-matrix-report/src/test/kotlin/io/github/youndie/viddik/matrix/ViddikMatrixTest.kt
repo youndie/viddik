@@ -357,6 +357,25 @@ class ViddikMatrixTest {
     }
 
     @Test
+    fun `a fixture too large in a capture from before does-not-fit-txt is counted as too large`() {
+        // A filtered run adds to a capture like this and keeps the lines of the fixtures it did not run.
+        val dir = device(24)
+        File(dir, "fixtures.txt").writeText("A.png\tGroup - A\nB.png\tGroup - B\nC.png\tGroup - C\n")
+        File(dir, "failures.txt").writeText(
+            "B.png\tjava.lang.AssertionError: 1080x3000 px does not fit the 1080x2200 px safe area of this device\n" +
+                "C.png\tboom\n",
+        )
+        File(dir, "does-not-fit.txt").writeText("")
+        dir.png("A.png")
+
+        val matrix = buildMatrix(listOf(File(root, "pulled")))
+
+        assertEquals(1, matrix.unfitCaptures)
+        assertEquals(1, matrix.refusedCaptures)
+        assertFalse(oldUnfitReason("boom"))
+    }
+
+    @Test
     fun `a fixture a level's run did not have is neither refused nor lost`() {
         val full = device(36)
         File(full, "fixtures.txt").writeText("A.png\tGroup - A\nB.png\tGroup - B\n")

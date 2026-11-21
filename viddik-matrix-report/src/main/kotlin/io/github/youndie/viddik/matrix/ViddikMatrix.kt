@@ -217,7 +217,9 @@ public fun buildMatrix(
                     .associate { it.substringBefore('\t') to it.substringAfter('\t') }
         }
     val reasons = reasonsIn(FAILURES_FILE)
-    // A capture older than this file has "does not fit" among its failures, and it is counted as refused.
+    // A capture from before this file has "does not fit" among its failures; such a line is read as too
+    // large all the same (oldUnfitReason). A filtered run adds to such a capture and leaves the lines of
+    // the fixtures it did not run, so without that they came back as refused next to the run's own file.
     val unfitReasons = reasonsIn(UNFIT_FILE)
 
     val titles = mutableMapOf<String, String?>()
@@ -267,7 +269,8 @@ public fun buildMatrix(
                             }
 
                             else -> {
-                                MatrixCell(CellStatus.MISSING, null, reason = reasons[device.slug]?.get(name))
+                                val reason = reasons[device.slug]?.get(name)
+                                MatrixCell(CellStatus.MISSING, null, reason = reason, unfit = oldUnfitReason(reason))
                             }
                         }
                 }
@@ -399,6 +402,11 @@ public fun missingLevelsWarning(
 
 internal const val EXPECTED_FILE = "fixtures.txt"
 internal const val FAILURES_FILE = "failures.txt"
+
+/** Whether a reason in [FAILURES_FILE] is what viddik-android-capture writes for a fixture too large for the device. */
+internal fun oldUnfitReason(reason: String?): Boolean = reason != null && OLD_UNFIT.containsMatchIn(reason)
+
+private val OLD_UNFIT = Regex("""\d+x\d+ px does not fit the \d+x\d+ px safe area""")
 internal const val UNFIT_FILE = "does-not-fit.txt"
 
 internal fun readDevice(file: File): MatrixDevice {

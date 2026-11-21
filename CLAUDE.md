@@ -870,7 +870,10 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       exactly like the others, and was read as one. Now only a fixture that
       threw fails `captureAll`, and the report counts "too large" apart (console, column headers,
       `summary.json` `tooLarge`/`tooLargeCaptures`, a note on the page) without failing on it. Captures from
-      before this have the reason in `failures.txt` and are still counted as refused.
+      before this have the reason in `failures.txt`, and the report reads such a line as too large too
+      (`oldUnfitReason`, by the message's own wording): a filtered run adds to a capture like that and
+      keeps the lines of the fixtures it did not run, and on the first consumer run after 0.8.0 that was
+      212 "refused" beside the run's own `does-not-fit.txt`.
     - **A connected run can take every capture and pull none.** AGP asks MediaStore for `/sdcard/Android`
       before the run, and with no row it passes no `additionalTestOutputDir` at all (seen in the `am instrument`
       line at `--info`): the capture falls back to its own external files directory, the tests are green, and
