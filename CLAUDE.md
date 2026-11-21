@@ -19,7 +19,9 @@ Three readers, three places. **README.md** is for someone deciding whether to us
 the comparison table, installation, one fixture, the tasks, and a list of what else it does with a
 link per topic — about 600 words, and it should stay near that. **`docs/*.md`** is for someone using
 it: fixtures, running, portability, the showroom, design parity, configuration (with every plugin
-option and the compatibility table). **This file** is for whoever changes the code: mechanisms,
+option and the compatibility table), and `docs/agents.md`, the same facts as steps for an agent driving
+viddik — a change to a command, a report file or a platform difference the matrix knows of belongs there
+too. **This file** is for whoever changes the code: mechanisms,
 measurements, dead ends. What changed in which version goes in the GitHub release notes, not in any
 of the three. A new feature gets a section in the `docs/` file it belongs to and, if a newcomer needs
 to know it exists, one line in README's list.
