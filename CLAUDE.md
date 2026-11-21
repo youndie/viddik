@@ -949,6 +949,20 @@ Dependency order: `viddik-annotations` (no deps on the others) → `viddik-testi
       `no capture` cell with nothing in `failures.txt`), in the console, the column headers and `summary.json`.
       Both used to be one number the reader had to take apart, and a level whose run was filtered or older was
       counted as lost too: a fixture missing from that level's own `fixtures.txt` is now a third count.
+  - **Triage, the level that draws a fixture wrong** (`ViddikTriage.kt`, #78). The reference comparison
+    cannot answer it: every level differs from the reference by the platform, so the largest share is
+    usually shadows or glyphs. `triage` compares the levels of one density pairwise per fixture
+    (`PairDistances`, each pair once, a size change as 100%) and calls a cell a suspect when it is the odd
+    one out (median distance to the others ≥ 1% and ≥ 3× their spread), the odd size, nearly blank where
+    the others are not (dominant colour ≥ 98% on a 4 px grid), or 5× its level's median distance from the
+    reference. One region holding most of the change adds to the rank, never makes a suspect on its own —
+    a level's shadows look like that too. **Odd one out needs three other levels** (`MIN_OTHERS`): on the
+    samples' kept captures of 24, 26 and 34, the two old levels agreed against 34 and all four suspects
+    were 34's shadows at ~3%; with four levels the rule holds as designed (the tests). The crop of a
+    suspect is against the other level closest to the rest, not the reference, because the reference can
+    be the odd one. `triage.json` carries a rerun command per suspect; the plugin passes `--project` for
+    it, and below `MIN_MANAGED_API` it is a connected run. Cost: n(n-1)/2 diffs per fixture and density,
+    with the row's captures held in memory, sequential (the report JVM has run out of heap before).
   - `viddik-matrix-report` (plain JVM) walks for `device.json`, compares every column with the
     reference through `ImageDiffer` at default thresholds, writes `build/reports/viddik-matrix/`.
     Run by `viddikAndroidMatrixReport` (`JavaExec` over a resolvable configuration, `isIgnoreExitValue` with a
