@@ -6,11 +6,17 @@
   // written here for batching still holds and is the preset's reason too — every update has to
   // survive a three-OS golden check, so they are cheap to review together and noisy one at a time.
   //
-  // The automerge preset is NOT extended: nothing merges itself here today. Its precondition would
-  // hold — verify-goldens.yaml runs on `pull_request` — but that check is exactly the one that is
-  // expected to fail on a Compose bump, so arming automerge here deserves its own decision rather
-  // than a rider on a config change.
-  extends: ["github>youndie/sborka"],
+  // sborka's `automerge-harness` is extended second, so `github-actions` and `gradle-wrapper`
+  // updates merge themselves on green. This file used to leave it out — not because the
+  // precondition failed (verify-goldens.yaml and samples.yaml run on every `pull_request`) but
+  // because the golden check is the one expected to fail on a Compose bump, and arming automerge
+  // deserved its own decision. That is this change, and the worry does not reach it: the harness
+  // preset merges the workflows' actions and the wrapper, never Compose, which keeps its own group
+  // and its `goldens-may-change` label below. The workflows no pull request runs are
+  // `publish-viddik-snapshot.yaml`, on every push to `main`, so a harness bump that broke it shows
+  // up red on the merge itself, and `android-matrix.yaml`, by hand, whose actions the pull-request
+  // workflows exercise too (re-checked 2026-11-25).
+  extends: ["github>youndie/sborka", "github>youndie/sborka:automerge-harness"],
 
   // Below the extends, so these win: package rules are concatenated, preset first, and the last
   // match takes effect.
